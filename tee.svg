@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 600" width="100%" height="100%" preserveAspectRatio="xMidYMin meet">
+    <defs>
+      <linearGradient id="twood" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#3a2510"></stop>
+        <stop offset="20%" stop-color="#7a5326"></stop>
+        <stop offset="48%" stop-color="#c89c5a"></stop>
+        <stop offset="65%" stop-color="#a47a3e"></stop>
+        <stop offset="100%" stop-color="#2a1808"></stop>
+      </linearGradient>
+      <linearGradient id="tspec" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="rgba(255,255,255,0)"></stop>
+        <stop offset="38%" stop-color="rgba(255,235,190,0.35)"></stop>
+        <stop offset="50%" stop-color="rgba(255,255,255,0.7)"></stop>
+        <stop offset="62%" stop-color="rgba(255,235,190,0.25)"></stop>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"></stop>
+      </linearGradient>
+      <radialGradient id="tcup" cx="50%" cy="40%" r="60%">
+        <stop offset="0%" stop-color="#1a0e04"></stop>
+        <stop offset="60%" stop-color="#3a2510"></stop>
+        <stop offset="100%" stop-color="#5a3818"></stop>
+      </radialGradient>
+      <clipPath id="tclip"><path d="M 61,0 L 64,18 L 72,32 L 82,60 L 85,200 L 88,380 L 92,500 L 97,560 L 100,590 L 100,590 L 103,560 L 108,500 L 112,380 L 115,200 L 118,60 L 128,32 L 136,18 L 139,0 Z"></path></clipPath>
+    </defs>
+    
+    <ellipse cx="100" cy="22" rx="48" ry="8" fill="rgba(0,0,0,0.35)"></ellipse>
+    
+    <path d="M 61,0 L 64,18 L 72,32 L 82,60 L 85,200 L 88,380 L 92,500 L 97,560 L 100,590 L 100,590 L 103,560 L 108,500 L 112,380 L 115,200 L 118,60 L 128,32 L 136,18 L 139,0 Z" fill="url(#twood)"></path>
+    <g clip-path="url(#tclip)">
+      <path d="M 162.738789826294 0 C 162.96903634130481 200, 163.29997964231595 400, 163.53022615732675 600" stroke="rgba(60,38,18,0.16)" stroke-width="1.0" fill="none" stroke-linecap="round"></path><path d="M 97.01973747499625 0 C 96.45794635826466 200, 94.388511256981 400, 93.82672014024942 600" stroke="rgba(60,38,18,0.20)" stroke-width="0.6" fill="none" stroke-linecap="round"></path><path d="M 46.97456500022822 0 C 45.844712812949936 200, 43.48982001119291 400, 42.35996782391463 600" stroke="rgba(220,180,120,0.23)" stroke-width="0.7" fill="none" stroke-linecap="round"></path><path d="M 169.24389375152379 0 C 169.55417526139252 200, 165.72329884799498 400, 166.03358035786374 600" stroke="rgba(60,38,18,0.19)" stroke-width="1.1" fill="none" stroke-linecap="round"></path><path d="M 30.074364613608488 0 C 31.911848690910883 200, 30.49215667462064 400, 32.32964075192304 600" stroke="rgba(60,38,18,0.21)" stroke-width="0.8" fill="none" stroke-linecap="round"></path><path d="M 163.36400242781033 0 C 163.29939102915174 200, 162.27821100012747 400, 162.21359960146887 600" stroke="rgba(60,38,18,0.17)" stroke-width="0.8" fill="none" stroke-linecap="round"></path><path d="M 80.85148323111247 0 C 80.54144059140835 200, 79.41025178098869 400, 79.10020914128457 600" stroke="rgba(60,38,18,0.23)" stroke-width="0.5" fill="none" stroke-linecap="round"></path><path d="M 65.07732426520619 0 C 66.42788944126484 200, 66.21364395372731 400, 67.56420912978597 600" stroke="rgba(220,180,120,0.17)" stroke-width="0.7" fill="none" stroke-linecap="round"></path><path d="M 87.34449047266133 0 C 87.31983108782971 200, 86.64761984687286 400, 86.62296046204123 600" stroke="rgba(60,38,18,0.13)" stroke-width="1.0" fill="none" stroke-linecap="round"></path><path d="M 105.13263433173006 0 C 106.93434317336944 200, 102.5576955172726 400, 104.35940435891199 600" stroke="rgba(220,180,120,0.20)" stroke-width="1.0" fill="none" stroke-linecap="round"></path><path d="M 111.74733239780076 0 C 110.24429194415498 200, 108.44772915081003 400, 106.94468869716425 600" stroke="rgba(60,38,18,0.12)" stroke-width="0.9" fill="none" stroke-linecap="round"></path><path d="M 131.09852545272997 0 C 130.3317866162052 200, 127.9180159614257 400, 127.1512771249009 600" stroke="rgba(60,38,18,0.10)" stroke-width="1.0" fill="none" stroke-linecap="round"></path><path d="M 123.37717370572219 0 C 124.22969944608714 200, 121.92641265781128 400, 122.77893839817624 600" stroke="rgba(220,180,120,0.21)" stroke-width="0.8" fill="none" stroke-linecap="round"></path><path d="M 141.34190553950123 0 C 141.84551591448437 200, 144.73689797031793 400, 145.24050834530107 600" stroke="rgba(60,38,18,0.13)" stroke-width="1.0" fill="none" stroke-linecap="round"></path><path d="M 161.69097946239478 0 C 163.53806741214785 200, 163.40607654408328 400, 165.25316449383635 600" stroke="rgba(60,38,18,0.24)" stroke-width="1.0" fill="none" stroke-linecap="round"></path><path d="M 84.61569726772147 0 C 84.47523429665215 200, 83.03756615289771 400, 82.89710318182838 600" stroke="rgba(60,38,18,0.24)" stroke-width="0.5" fill="none" stroke-linecap="round"></path>
+      <ellipse cx="103.02736938150497" cy="156.12678060673875" rx="3" ry="1.5" fill="rgba(60,30,10,0.35)"></ellipse><ellipse cx="115.82837087598406" cy="113.11015716826029" rx="3" ry="1.5" fill="rgba(60,30,10,0.35)"></ellipse><ellipse cx="63.14101430081546" cy="404.55984748558103" rx="3" ry="1.5" fill="rgba(60,30,10,0.35)"></ellipse>
+      
+      <rect x="0" y="0" width="200" height="600" fill="url(#tspec)" opacity="0.6"></rect>
+      
+      <ellipse cx="100" cy="14" rx="32" ry="10" fill="url(#tcup)"></ellipse>
+      
+      <line x1="62" y1="22" x2="138" y2="22" stroke="rgba(0,0,0,0.18)" stroke-width="0.6"></line>
+      <line x1="68" y1="32" x2="132" y2="32" stroke="rgba(0,0,0,0.16)" stroke-width="0.5"></line>
+      <line x1="80" y1="62" x2="120" y2="62" stroke="rgba(0,0,0,0.12)" stroke-width="0.4"></line>
+    </g>
+    
+    <ellipse cx="100" cy="6" rx="38" ry="6" fill="none" stroke="rgba(255,225,170,0.5)" stroke-width="1.5"></ellipse>
+    <ellipse cx="100" cy="6" rx="38" ry="6" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.5" transform="translate(0 1)"></ellipse>
+    
+    <ellipse cx="100" cy="6" rx="32" ry="4" fill="rgba(0,0,0,0.5)"></ellipse>
+  </svg>

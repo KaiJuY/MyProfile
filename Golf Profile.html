@@ -1,0 +1,1779 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kai-Ju Yang — Senior Software Engineer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --accent: #FF6A00;
+    --accent-soft: rgba(255,106,0,0.18);
+    --bg: #07080a;
+    --bg-2: #0c0e12;
+    --ink: #f3efe8;
+    --ink-2: rgba(243,239,232,0.6);
+    --ink-3: rgba(243,239,232,0.38);
+    --line: rgba(243,239,232,0.10);
+    --glass: rgba(20,22,26,0.55);
+    --glass-2: rgba(255,255,255,0.04);
+  }
+  *,*::before,*::after { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background: var(--bg); color: var(--ink);
+    font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  html[data-lang="zh"] body { font-family: 'Noto Sans TC', 'Inter', system-ui, sans-serif; }
+  html[data-lang="zh"] .serif { font-family: 'Instrument Serif', 'Noto Sans TC', serif; }
+  body { overflow-x: hidden; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .serif { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; }
+
+  /* ─── Cinematic background scene ─── */
+  .scene {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 10%, rgba(255,106,0,0.10), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 20% 90%, rgba(255,106,0,0.06), transparent 70%),
+      linear-gradient(180deg, #050608 0%, #07080a 40%, #0a0c10 100%);
+    overflow: hidden;
+  }
+  .grid-floor {
+    position: absolute; left: 50%; bottom: -10%; width: 280%; height: 70%;
+    transform: translateX(-50%) perspective(800px) rotateX(72deg);
+    transform-origin: center top;
+    background-image:
+      linear-gradient(to right, rgba(255,106,0,0.18) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,106,0,0.18) 1px, transparent 1px);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(ellipse 60% 80% at 50% 0%, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 60% 80% at 50% 0%, #000 30%, transparent 80%);
+    animation: floorScroll 8s linear infinite;
+    opacity: 0.55;
+  }
+  @keyframes floorScroll {
+    from { background-position: 0 0; }
+    to { background-position: 0 80px; }
+  }
+  .stars {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1px 1px at 80% 20%, rgba(255,255,255,0.4), transparent),
+      radial-gradient(1.5px 1.5px at 60% 70%, rgba(255,200,140,0.7), transparent),
+      radial-gradient(1px 1px at 35% 80%, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1px 1px at 10% 50%, rgba(255,255,255,0.4), transparent);
+  }
+  .haze {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 100% 50% at 50% 100%, rgba(255,106,0,0.20), transparent 70%);
+    filter: blur(40px);
+  }
+  .streaks {
+    position: absolute; inset: 0; opacity: 0.4;
+  }
+  .streak {
+    position: absolute; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: streak 2.4s linear infinite;
+    filter: blur(0.4px);
+  }
+  @keyframes streak {
+    0%   { transform: translateX(-30vw) scaleX(0.3); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: translateX(130vw) scaleX(1.5); opacity: 0; }
+  }
+
+  /* ─── Top nav ─── */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 40px;
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    background: linear-gradient(180deg, rgba(7,8,10,0.7), rgba(7,8,10,0));
+  }
+  .brand { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; letter-spacing: 0.02em; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #fff 0%, #e8e3d8 35%, #8a8478 100%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 4px 14px rgba(255,106,0,0.25);
+    position: relative;
+  }
+  .brand-mark::after {
+    content:''; position:absolute; inset:3px; border-radius:50%;
+    background-image:
+      radial-gradient(circle at 50% 50%, rgba(0,0,0,0.18) 0.8px, transparent 1.2px);
+    background-size: 5px 5px;
+    mix-blend-mode: multiply; opacity: 0.7;
+  }
+  .nav-links { display:flex; gap: 28px; font-size: 13px; color: var(--ink-2); }
+  .nav-links a { color: inherit; text-decoration: none; transition: color .2s; cursor: pointer; }
+  .nav-links a:hover { color: var(--ink); }
+  .nav-links a.active { color: var(--accent); }
+  .nav-cta { font-size:12px; padding: 8px 14px; border:1px solid var(--line); border-radius: 999px;
+    color: var(--ink); background: var(--glass-2); cursor: pointer; transition: all .2s; }
+  .nav-cta:hover { border-color: var(--accent); color: var(--accent); }
+  .nav-right { display:flex; align-items:center; gap: 10px; }
+  .nav-lang {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em;
+    padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px;
+    color: var(--ink-2); background: var(--glass-2); cursor: pointer; transition: all .2s;
+    min-width: 44px; text-align: center;
+  }
+  .nav-lang:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ─── Layout ─── */
+  main { position: relative; z-index: 1; }
+  section { position: relative; padding: 120px 40px; }
+
+  /* ─── Hero ─── */
+  .hero {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding-top: 80px;
+  }
+  .hero-inner { width: 100%; max-width: 1320px; position: relative; }
+  .hero-meta {
+    display: flex; gap: 24px; align-items: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.18em;
+    margin-bottom: 28px;
+  }
+  .hero-meta .dot { width:6px; height:6px; border-radius:50%; background: var(--accent);
+    box-shadow: 0 0 12px var(--accent); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .hero-title {
+    font-size: clamp(54px, 9vw, 132px);
+    font-weight: 600; line-height: 0.92; letter-spacing: -0.04em;
+    margin: 0 0 24px;
+  }
+  .hero-title .serif { color: var(--accent); }
+  .hero-sub {
+    max-width: 640px; font-size: 17px; line-height: 1.55;
+    color: var(--ink-2); margin: 0 0 40px;
+  }
+  .hero-grid {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center;
+  }
+  .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+    border-top: 1px solid var(--line); padding-top: 28px; max-width: 540px; }
+  .stat-block { padding-right: 12px; }
+  .stat-num { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 500;
+    letter-spacing: -0.02em; color: var(--ink); }
+  .stat-num .accent { color: var(--accent); }
+  .stat-lbl { font-size: 11px; color: var(--ink-3); text-transform: uppercase;
+    letter-spacing: 0.16em; margin-top: 6px; }
+
+  /* ─── The Sphere ─── */
+  .sphere-stage {
+    position: relative; width: 100%; aspect-ratio: 1/1; max-width: 580px; margin-left: auto;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sphere-orbit {
+    position: absolute; inset: 8%; border-radius: 50%;
+    border: 1px dashed rgba(255,106,0,0.18);
+    animation: spin 40s linear infinite;
+  }
+  .sphere-orbit::before, .sphere-orbit::after {
+    content:''; position:absolute; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); top: 50%; box-shadow: 0 0 12px var(--accent);
+  }
+  .sphere-orbit::before { left: -3px; transform: translateY(-50%); }
+  .sphere-orbit::after { right: -3px; transform: translateY(-50%); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .sphere {
+    position: relative; width: 72%; aspect-ratio: 1/1; border-radius: 50%;
+    overflow: visible;
+    transform-style: preserve-3d;
+    animation: bob 6s ease-in-out infinite;
+    filter: drop-shadow(0 30px 50px rgba(0,0,0,0.7)) drop-shadow(0 0 60px rgba(255,106,0,0.15));
+  }
+  .sphere img.ballart { width:100%; height:100%; display:block; user-select:none; -webkit-user-drag:none; }
+  @keyframes bob {
+    0%,100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-12px) rotate(2deg); }
+  }
+  /* Dimple grid using layered radial-gradients with hex offset */
+  .sphere::before, .sphere::after { content: none; }
+  .sphere-glare { display: none; }
+  .sphere-blur {
+    position: absolute; inset: -10%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,106,0,0.25), transparent 60%);
+    filter: blur(40px); z-index: -1;
+    animation: bob 6s ease-in-out infinite reverse;
+  }
+  /* motion blur trails behind ball */
+  .trail {
+    position: absolute; left: 50%; top: 50%;
+    width: 70%; aspect-ratio: 1/1; border-radius: 50%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(255,106,0,0.12), transparent 60%);
+    filter: blur(20px);
+    animation: trailPulse 3s ease-in-out infinite;
+  }
+  @keyframes trailPulse {
+    0%,100% { transform: translate(-50%, -50%) scale(1); opacity:0.6; }
+    50% { transform: translate(-50%, -50%) scale(1.15); opacity:0.3; }
+  }
+
+  /* coordinate readouts beside sphere */
+  .sphere-hud {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ink-3); letter-spacing: 0.1em; line-height: 1.8;
+  }
+  .sphere-hud .row { display:flex; gap: 8px; align-items: center; }
+  .sphere-hud .row span:first-child { color: var(--accent); }
+  .sphere-hud .row::before {
+    content:''; width: 16px; height: 1px; background: var(--accent); display:inline-block;
+  }
+  .sphere-hud-r {
+    position: absolute; right: 0; bottom: 8%;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ink-3); letter-spacing: 0.1em; text-align: right; line-height: 1.8;
+  }
+
+  /* scroll cue */
+  .scroll-cue {
+    position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--ink-3); letter-spacing: 0.2em; text-transform: uppercase;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .scroll-cue::after {
+    content:''; width:1px; height: 36px;
+    background: linear-gradient(to bottom, var(--accent), transparent);
+    animation: drop 1.8s ease-in-out infinite;
+  }
+  @keyframes drop {
+    0% { transform: scaleY(0); transform-origin: top; }
+    50% { transform: scaleY(1); transform-origin: top; }
+    100% { transform: scaleY(0); transform-origin: bottom; }
+  }
+
+  /* ─── Sticky stage section (flythrough) ─── */
+  .flythrough { padding: 0; }
+  .flythrough-rail { height: 480vh; position: relative; }
+  .flythrough-stage {
+    position: sticky; top: 0; height: 100vh; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .fly-ball-wrap {
+    position: absolute; left: 0; top: 0;
+    width: 320px; aspect-ratio: 1/1;
+    will-change: transform;
+  }
+  .fly-ball {
+    width: 100%; height: 100%;
+    position: relative; border-radius: 50%;
+    background-image: url('ball.svg');
+    background-size: cover;
+    filter: drop-shadow(0 0 50px rgba(255,106,0,0.4));
+    will-change: transform;
+  }
+  /* tee on left side — high-detail wood SVG */
+  .tee {
+    position: absolute; left: calc(12% - 24px); bottom: 18%;
+    width: 48px; height: 144px; pointer-events: none;
+    background-image: url('tee.svg');
+    background-size: contain; background-repeat: no-repeat; background-position: center top;
+    transform-origin: bottom center;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,0.6));
+    opacity: 0.95;
+  }
+  .tee::before {
+    content:''; position:absolute; left:50%; bottom:-8px; transform: translateX(-50%);
+    width: 90px; height: 8px; border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(255,106,0,0.4), transparent 70%);
+    filter: blur(5px);
+  }
+  /* impact flash that fires once on launch — anchored to ball's left edge */
+  .impact-flash {
+    position: absolute; left: 0; top: 0;
+    width: 220px; height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.95), rgba(255,180,80,0.5) 30%, transparent 70%);
+    filter: blur(8px);
+    opacity: 0;
+    pointer-events: none;
+    will-change: opacity, transform;
+  }
+  /* sparks radiating from impact — anchored to ball's left edge */
+  .impact-sparks {
+    position: absolute; left: 0; top: 0;
+    width: 0; height: 0; pointer-events: none;
+    will-change: transform, opacity;
+    opacity: 0;
+  }
+  .impact-sparks i {
+    position: absolute; right: 0; top: 0;
+    width: 60px; height: 1.5px;
+    background: linear-gradient(270deg, var(--accent), transparent);
+    transform-origin: 100% 50%;
+    border-radius: 2px;
+  }
+  /* trailing motion blur ribbon along flight path */
+  .ball-trail {
+    position: absolute; left: 0; top: 0;
+    pointer-events: none; will-change: transform, opacity;
+    width: 320px; height: 6px;
+    background: linear-gradient(90deg, transparent, rgba(255,180,100,0.7), rgba(255,255,255,0.85));
+    filter: blur(3px);
+    border-radius: 4px;
+    transform-origin: right center;
+    opacity: 0;
+  }
+  /* digital data stream lines (flow background while ball flies) */
+  .data-flow {
+    position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+    opacity: 0.55;
+  }
+  .data-flow .line {
+    position: absolute; height: 1px; left: -10%;
+    background: linear-gradient(90deg, transparent, var(--accent) 40%, rgba(255,255,255,0.6) 60%, transparent);
+    animation: flow linear infinite;
+    animation-duration: calc(var(--ld, 2s) / var(--flow-speed, 1));
+    filter: blur(0.3px);
+    will-change: transform;
+  }
+  @keyframes flow {
+    from { transform: translateX(-30%) scaleX(0.4); opacity: 0; }
+    20%  { opacity: 1; }
+    to   { transform: translateX(140vw) scaleX(1.4); opacity: 0; }
+  }
+  /* binary glyph drift */
+  .data-flow .glyph {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--accent); opacity: 0.35;
+    letter-spacing: 0.06em;
+    animation: glyphDrift linear infinite;
+    text-shadow: 0 0 8px var(--accent);
+  }
+  @keyframes glyphDrift {
+    from { transform: translateX(-10vw); opacity: 0; }
+    20%  { opacity: 0.5; }
+    to   { transform: translateX(110vw); opacity: 0; }
+  }
+  /* perspective grid that races at scroll */
+  .flow-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, rgba(255,106,0,0.10) 1px, transparent 1px);
+    background-size: 60px 100%;
+    mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent);
+    will-change: background-position;
+  }
+  .fly-ball::before, .fly-ball::after { content: none; }
+  .fly-blur {
+    position: absolute; left: 0; top: 0;
+    width: 600px; height: 80px;
+    background: radial-gradient(ellipse, rgba(255,106,0,0.4), transparent 70%);
+    filter: blur(30px);
+    will-change: transform, opacity;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Glass cards floating in flythrough */
+  .glass-card {
+    position: absolute; top: 0; left: 0;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px; padding: 20px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 20px 60px rgba(0,0,0,0.4);
+    will-change: transform, opacity;
+  }
+  .glass-card .gc-tag {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--accent); letter-spacing: 0.16em; text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .glass-card h4 { margin: 0 0 6px; font-size: 17px; font-weight: 500; letter-spacing: -0.01em; }
+  .glass-card p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+  .glass-card .gc-meta {
+    display:flex; justify-content:space-between; margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3);
+    letter-spacing: 0.1em;
+  }
+  .glass-card .gc-meta b { color: var(--ink); font-weight: 500; }
+
+  .stage-caption {
+    position: absolute; left: 40px; top: 50%; transform: translateY(-50%);
+    max-width: 360px; pointer-events: none;
+  }
+  .stage-caption .step {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: var(--accent); letter-spacing: 0.2em; text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .stage-caption h3 {
+    margin: 0 0 14px; font-size: 44px; font-weight: 500; line-height: 1; letter-spacing: -0.03em;
+  }
+  .stage-caption p {
+    margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.55;
+  }
+  .stage-progress {
+    position: absolute; right: 40px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3);
+    letter-spacing: 0.16em;
+  }
+  .stage-progress .seg { display:flex; align-items:center; gap: 10px; opacity: 0.45; transition: opacity .3s; }
+  .stage-progress .seg.active { opacity: 1; color: var(--ink); }
+  .stage-progress .bar { width: 32px; height: 1px; background: var(--ink-3); transition: all .3s; }
+  .stage-progress .seg.active .bar { background: var(--accent); width: 56px; box-shadow: 0 0 8px var(--accent); }
+
+  /* ─── Projects section ─── */
+  .section-head {
+    display: flex; justify-content: space-between; align-items: end;
+    margin-bottom: 56px; max-width: 1320px; margin-left: auto; margin-right: auto;
+  }
+  .section-head .eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--accent); letter-spacing: 0.2em; text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .section-head h2 {
+    margin: 0; font-size: clamp(40px, 5vw, 72px); font-weight: 500;
+    letter-spacing: -0.03em; line-height: 0.95; max-width: 720px;
+  }
+  .section-head .meta { font-family:'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); letter-spacing: 0.12em; }
+
+  .projects {
+    max-width: 1320px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(12, 1fr); gap: 20px;
+  }
+  .project {
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    background: linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px; padding: 28px; position: relative; overflow: hidden;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 40px rgba(0,0,0,0.3);
+    transition: transform .3s cubic-bezier(.2,.7,.2,1), border-color .2s, box-shadow .25s;
+    cursor: default;
+    min-height: 260px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .project[data-href] { cursor: pointer; }
+  .project[data-href]:hover { transform: translateY(-4px); border-color: rgba(255,106,0,0.35); }
+  /* External-link affordance: clickable cards carry an accented kind-pill with ↗ */
+  .project[data-href] { border-color: rgba(255,106,0,0.18); }
+  .project[data-href] .ptag { align-items: center; }
+  .project[data-href] .ptag .pid + span {
+    color: var(--accent);
+    background: rgba(255,106,0,0.12);
+    border: 1px solid rgba(255,106,0,0.42);
+    padding: 4px 10px;
+    border-radius: 999px;
+    letter-spacing: 0.14em;
+    box-shadow: 0 0 12px rgba(255,106,0,0.20);
+    transition: background .25s, border-color .25s, box-shadow .25s;
+    white-space: nowrap;
+  }
+  .project[data-href] .ptag .pid + span::after {
+    content: ' \2197';
+    margin-left: 4px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .project[data-href]:hover .ptag .pid + span {
+    background: rgba(255,106,0,0.24);
+    border-color: var(--accent);
+    box-shadow: 0 0 18px rgba(255,106,0,0.45);
+  }
+  .plink-arrow { display: none; }
+  .project::before {
+    content:''; position:absolute; top:0; left:0; right:0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  }
+  .project::after {
+    content:''; position:absolute; top:-50%; right:-30%; width: 70%; height: 200%;
+    background: radial-gradient(ellipse, rgba(255,106,0,0.15), transparent 60%);
+    filter: blur(40px); pointer-events: none; opacity: 0; transition: opacity .4s;
+  }
+  .project:hover::after { opacity: 1; }
+  .project .ptag {
+    font-family:'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-3);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    display:flex; justify-content: space-between;
+  }
+  .project .ptag .pid { color: var(--accent); }
+  .project .pbody h3 { margin: 16px 0 10px; font-size: 24px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; }
+  .project .pbody p { margin: 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
+  .project .pfoot {
+    display:flex; justify-content:space-between; align-items:center; margin-top: 20px;
+    padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .project .pchips { display:flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family:'JetBrains Mono', monospace; font-size: 10px; padding: 4px 8px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2);
+    letter-spacing: 0.06em;
+  }
+  .project .pyear { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); }
+
+  .project.feat { grid-column: span 7; min-height: 320px; }
+  .project.std  { grid-column: span 5; }
+  .project.wide { grid-column: span 12; min-height: 240px; flex-direction: row; gap: 40px; align-items: stretch; }
+  .project.half { grid-column: span 6; }
+  .project.third { grid-column: span 4; }
+
+  .project.wide .pbody { flex: 1; }
+  .project.wide .pviz { flex: 1; position: relative; min-height: 180px;
+    border-radius: 12px; overflow: hidden;
+    background:
+      repeating-linear-gradient(45deg, rgba(255,255,255,0.025) 0 8px, transparent 8px 16px),
+      linear-gradient(135deg, rgba(255,106,0,0.10), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.05);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3);
+    letter-spacing: 0.16em; text-transform: uppercase;
+  }
+  .project.wide .pviz::before {
+    content:''; position:absolute; inset:0;
+    background-image:
+      radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1.4px);
+    background-size: 14px 14px;
+    mask-image: radial-gradient(circle at 60% 40%, #000, transparent 70%);
+    -webkit-mask-image: radial-gradient(circle at 60% 40%, #000, transparent 70%);
+  }
+  .project.wide .pviz img {
+    position: relative; z-index: 1;
+    width: 100%; height: 100%;
+    object-fit: contain; object-position: center;
+    display: block; max-height: 280px;
+    filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
+  }
+
+  /* ─── Bag / Equipment ─── */
+  .bag {
+    max-width: 1320px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1.2fr; gap: 60px; align-items: start;
+  }
+  .bag-list { display: flex; flex-direction: column; }
+  .club {
+    display: grid; grid-template-columns: 60px 1fr auto; align-items: center;
+    gap: 20px; padding: 22px 0; border-bottom: 1px solid var(--line);
+    cursor: pointer; transition: padding .3s;
+  }
+  .club:hover { padding-left: 12px; }
+  .club:hover .club-name { color: var(--accent); }
+  .club-num { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent); letter-spacing: 0.06em; }
+  .club-name { font-size: 17px; font-weight: 500; transition: color .2s; }
+  .club-brand { font-family:'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); letter-spacing: 0.1em; }
+  .club-loft { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-2); }
+
+  .scorecard {
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    background: linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015));
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px;
+    padding: 28px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .sc-head { display:flex; justify-content:space-between; align-items:start; margin-bottom: 24px; }
+  .sc-head h4 { margin: 0; font-size: 20px; font-weight: 500; }
+  .sc-head .course { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-3); letter-spacing: 0.1em; }
+  .sc-head .score { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 500;
+    line-height: 1; color: var(--ink); letter-spacing: -0.02em; }
+  .sc-head .par { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.12em; margin-top: 4px; }
+  .holes { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; margin-bottom: 14px; }
+  .hole {
+    aspect-ratio: 1/1; border-radius: 6px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    font-family:'JetBrains Mono', monospace; font-size: 11px;
+    background: rgba(255,255,255,0.03); border:1px solid var(--line);
+    transition: all .2s; cursor: default;
+  }
+  .hole .h-n { color: var(--ink-3); font-size: 9px; letter-spacing: 0.08em; }
+  .hole .h-s { font-size: 14px; font-weight: 500; margin-top: 2px; }
+  .hole.birdie { background: rgba(255,106,0,0.18); border-color: rgba(255,106,0,0.4); }
+  .hole.birdie .h-s { color: var(--accent); }
+  .hole.eagle { background: rgba(255,106,0,0.32); border-color: var(--accent); }
+  .hole.eagle .h-s { color: #fff; }
+  .hole.bogey { opacity: 0.5; }
+  .holes-row-lbl {
+    font-family:'JetBrains Mono', monospace; font-size: 9px; color: var(--ink-3);
+    letter-spacing: 0.16em; margin: 14px 0 8px; text-transform: uppercase;
+  }
+
+  /* ─── Timeline / Career ─── */
+  .timeline {
+    max-width: 1100px; margin: 0 auto; position: relative; padding-left: 100px;
+  }
+  .timeline::before {
+    content:''; position:absolute; left: 80px; top: 0; bottom: 0; width: 1px;
+    background: linear-gradient(to bottom, transparent, var(--line) 8%, var(--line) 92%, transparent);
+  }
+  .tl-item { position: relative; padding: 24px 0; display: grid; grid-template-columns: auto 1fr; gap: 40px; }
+  .tl-year {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--ink-3);
+    letter-spacing: 0.1em; position: absolute; left: -100px; top: 30px; width: 70px; text-align:right;
+  }
+  .tl-item::before {
+    content: ''; position: absolute; left: -25px; top: 32px;
+    width: 11px; height: 11px; border-radius: 50%; background: var(--bg);
+    border: 1px solid var(--accent); box-shadow: 0 0 0 4px var(--bg), 0 0 12px var(--accent-soft);
+  }
+  .tl-item.now::before { background: var(--accent); }
+  .tl-item h4 { margin: 0 0 6px; font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+  .tl-item .tl-org { font-family:'JetBrains Mono', monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 14px; }
+  .tl-item p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.6; max-width: 620px; }
+  .tl-item .tl-tags { display:flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+
+  /* ─── Footer / contact ─── */
+  .contact {
+    max-width: 1320px; margin: 0 auto;
+    display: grid; grid-template-columns: 1.4fr 1fr; gap: 60px; align-items: end;
+    padding-bottom: 80px;
+  }
+  .contact h2 {
+    margin: 0; font-size: clamp(48px, 7vw, 96px); font-weight: 500;
+    letter-spacing: -0.04em; line-height: 0.92;
+  }
+  .contact h2 .serif { color: var(--accent); }
+  .contact-side { display: flex; flex-direction: column; gap: 18px; }
+  .contact-side a {
+    font-family:'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.04em;
+    color: var(--ink); text-decoration: none; padding: 14px 0;
+    border-bottom: 1px solid var(--line); display:flex; justify-content: space-between; align-items: center;
+    transition: color .2s, padding-left .3s;
+  }
+  .contact-side a:hover { color: var(--accent); padding-left: 8px; }
+  .contact-side a span:last-child { color: var(--ink-3); transition: transform .2s; }
+  .contact-side a:hover span:last-child { color: var(--accent); transform: translateX(4px); }
+
+  .footnote {
+    display:flex; justify-content:space-between; padding: 24px 40px;
+    border-top: 1px solid var(--line); font-family:'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--ink-3); letter-spacing: 0.18em; text-transform: uppercase;
+  }
+
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+    .sphere-stage { max-width: 380px; margin: 0 auto; }
+    .nav { padding: 16px 20px; }
+    .nav-links { display:none; }
+    section { padding: 80px 20px; }
+    .projects { grid-template-columns: 1fr; }
+    .project.feat, .project.std, .project.wide, .project.half, .project.third { grid-column: span 1; }
+    .project.wide { flex-direction: column; }
+    .bag { grid-template-columns: 1fr; }
+    .contact { grid-template-columns: 1fr; }
+    .stage-caption { left: 20px; max-width: 60vw; }
+    .stage-progress { right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="scene">
+  <div class="stars"></div>
+  <div class="grid-floor"></div>
+  <div class="haze"></div>
+  <div class="streaks" id="streaks"></div>
+</div>
+
+<nav class="nav">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <span data-i18n="brand.name">Kai-Ju Yang</span>
+    <span style="color:var(--ink-3); margin-left:6px;">·</span>
+    <span class="mono" style="font-size:11px; color:var(--ink-3); letter-spacing:0.12em;" data-i18n="brand.tag">ALLEN · SE · 9+ YRS</span>
+  </div>
+  <div class="nav-links">
+    <a data-jump="hero" class="active" data-i18n="nav.index">Index</a>
+    <a data-jump="flythrough" data-i18n="nav.pursuits">Pursuits</a>
+    <a data-jump="projects" data-i18n="nav.work">Work</a>
+    <a data-jump="bag" data-i18n="nav.toolkit">Toolkit</a>
+    <a data-jump="career" data-i18n="nav.career">Trajectory</a>
+    <a data-jump="contact" data-i18n="nav.contact">Contact</a>
+  </div>
+  <div class="nav-right">
+    <button class="nav-lang" id="navLang" aria-label="Toggle language">中</button>
+    <button class="nav-cta" data-i18n="nav.cta">Open to collaboration</button>
+  </div>
+</nav>
+
+<main>
+
+<!-- HERO -->
+<section class="hero" id="hero">
+  <div class="hero-inner">
+    <div class="hero-meta">
+      <span class="dot"></span>
+      <span data-i18n="hero.file">FILE — 06.05.2026 / TPE-HSZ</span>
+      <span style="color:var(--ink);" data-i18n="hero.ver">PROFILE_v9.4</span>
+    </div>
+    <div class="hero-grid">
+      <div>
+        <h1 class="hero-title" data-i18n="hero.title">
+          Software<br />
+          is passion,<br />
+          system design<br />
+          is <span class="serif">art</span>.
+        </h1>
+        <p class="hero-sub" data-i18n="hero.sub">
+          Kai-Ju Yang — Senior Software Engineer with 9+ years building production-grade
+          systems. From C# / C++ / Python platform engineering to React + FastAPI full-stack
+          and PyTorch · LLM · RAG pipelines. Every system treated like an industrial product —
+          modular, testable, designed to age well. Headed toward AI systems engineering. Hsinchu, Taiwan.
+        </p>
+        <div class="hero-stats">
+          <div class="stat-block">
+            <div class="stat-num">9<span class="accent">+</span></div>
+            <div class="stat-lbl" data-i18n="hero.stat1">Years shipping</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-num">10<span class="accent">+</span></div>
+            <div class="stat-lbl" data-i18n="hero.stat2">Production systems</div>
+          </div>
+          <div class="stat-block">
+            <div class="stat-num">5<span class="accent">+</span></div>
+            <div class="stat-lbl" data-i18n="hero.stat3">Live products</div>
+          </div>
+        </div>
+      </div>
+      <div class="sphere-stage">
+        <div class="sphere-hud">
+          <div class="row"><span>SPIN</span><span>2,840 rpm</span></div>
+          <div class="row"><span>LAUNCH</span><span>11.2°</span></div>
+          <div class="row"><span>CARRY</span><span>262 yds</span></div>
+        </div>
+        <div class="sphere-orbit"></div>
+        <div class="trail"></div>
+        <div class="sphere">
+          <img class="ballart" src="ball.svg" alt="" />
+        </div>
+        <div class="sphere-blur"></div>
+        <div class="sphere-hud-r">
+          <div>TITLEIST · PROV1X</div>
+          <div>NO. 03 · DBL DOT</div>
+          <div style="color:var(--accent)" data-i18n="hero.tracked">———— TRACKED</div>
+        </div>
+      </div>
+    </div>
+    <div class="scroll-cue"><span data-i18n="hero.scroll">Scroll · flythrough</span></div>
+  </div>
+</section>
+
+<!-- STICKY FLYTHROUGH -->
+<section class="flythrough" id="flythrough">
+  <div class="flythrough-rail" id="flyRail">
+    <div class="flythrough-stage">
+      <div class="flow-grid" id="flowGrid"></div>
+      <div class="data-flow" id="dataFlow"></div>
+      <div class="tee" id="tee"></div>
+      <div class="impact-flash" id="impactFlash"></div>
+      <div class="impact-sparks" id="impactSparks">
+        <i style="transform: rotate(-60deg)"></i>
+        <i style="transform: rotate(-30deg)"></i>
+        <i style="transform: rotate(0deg)"></i>
+        <i style="transform: rotate(30deg)"></i>
+        <i style="transform: rotate(60deg)"></i>
+        <i style="transform: rotate(-90deg)"></i>
+        <i style="transform: rotate(90deg)"></i>
+        <i style="transform: rotate(-15deg)"></i>
+        <i style="transform: rotate(15deg)"></i>
+      </div>
+      <div class="ball-trail" id="ballTrail"></div>
+      <div class="fly-blur" id="flyBlur"></div>
+      <div class="fly-ball-wrap" id="flyBall">
+        <div class="fly-ball" id="flyBallInner"></div>
+      </div>
+
+      <!-- Floating glass cards -->
+      <div class="glass-card" style="width:260px;" data-card="0">
+        <div class="gc-tag" data-i18n="fly.c0.tag">// automation</div>
+        <h4 data-i18n="fly.c0.h">EFEM Automation Framework</h4>
+        <p data-i18n="fly.c0.p">C# core for 6 EFEM CIM systems shipped to major fabs. Stable annual sales, 99.9%+ uptime.</p>
+        <div class="gc-meta"><span data-i18n="fly.c0.s">C# / .NET</span><b>2022—2025</b></div>
+      </div>
+      <div class="glass-card" style="width:240px;" data-card="1">
+        <div class="gc-tag" data-i18n="fly.c1.tag">// protocols</div>
+        <h4 data-i18n="fly.c1.h">SECS/GEM Validation Tool</h4>
+        <p data-i18n="fly.c1.p">EAP host emulator for software-only protocol testing. Cuts on-site debug time 33%.</p>
+        <div class="gc-meta"><span data-i18n="fly.c1.s">C# / WPF</span><b>2025</b></div>
+      </div>
+      <div class="glass-card" style="width:260px;" data-card="2">
+        <div class="gc-tag" data-i18n="fly.c2.tag">// ai_research</div>
+        <h4 data-i18n="fly.c2.h">DCSA-YOLO defect detection</h4>
+        <p data-i18n="fly.c2.p">Custom YOLOv11 with AFF + DCS + AIE modules. mAP@50 0.836, +4% over baseline.</p>
+        <div class="gc-meta"><span data-i18n="fly.c2.s">PYTORCH</span><b>2024</b></div>
+      </div>
+      <div class="glass-card" style="width:240px;" data-card="3">
+        <div class="gc-tag" data-i18n="fly.c3.tag">// saas</div>
+        <h4 data-i18n="fly.c3.h">Divine Whisper</h4>
+        <p data-i18n="fly.c3.p">Full-stack RAG app. React + FastAPI, vector retrieval + paid LLM interpretation.</p>
+        <div class="gc-meta"><span data-i18n="fly.c3.s">FASTAPI / RAG</span><b>2025</b></div>
+      </div>
+
+      <div class="stage-caption" id="stageCaption">
+        <div class="step">FRAME 01 / 04</div>
+        <h3>Architecture<br />is the craft.</h3>
+        <p>Modular cores, testable boundaries, clear ownership. Same engineering rigor whether the consumer is a fab tool, a web user, or an LLM agent.</p>
+      </div>
+      <div class="stage-progress" id="stageProgress">
+        <div class="seg active"><span>01</span><div class="bar"></div></div>
+        <div class="seg"><span>02</span><div class="bar"></div></div>
+        <div class="seg"><span>03</span><div class="bar"></div></div>
+        <div class="seg"><span>04</span><div class="bar"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROJECTS -->
+<section id="projects">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow" data-i18n="proj.head.eye">// Selected work / 2016—2026</div>
+      <h2 data-i18n="proj.head.h2">Systems that ship<br />and stay shipped.</h2>
+    </div>
+    <div class="meta" data-i18n="proj.head.meta">10+ projects · 10 yrs · TPE / HSZ</div>
+  </div>
+
+  <div class="projects">
+    <div class="project feat">
+      <div class="ptag"><span class="pid">PRJ_01</span><span data-i18n="proj.p1.kind">FEATURED</span></div>
+      <div class="pbody">
+        <h3 data-i18n="proj.p1.h">EFEM Automation Framework</h3>
+        <p data-i18n="proj.p1.p">C# software core for a new EFEM (Equipment Front End Module) product line. Integrated complex hardware logic with upper-level CIM/EAP host systems. Shipped 6 systems to major semiconductor fabs at 40–60 units/year, generating ~$1.2M–$1.8M annual revenue. Stable for 4+ years.</p>
+      </div>
+      <div class="pfoot">
+        <div class="pchips">
+          <span class="chip">C#</span><span class="chip">.NET</span><span class="chip">SECS·GEM</span><span class="chip">WPF</span>
+        </div>
+        <span class="pyear">2022—2025</span>
+      </div>
+    </div>
+    <div class="project std" data-href="https://secs-simulator.pages.dev/">
+      <div class="ptag"><span class="pid">PRJ_02</span><span data-i18n="proj.p2.kind">DEMO · LIVE</span></div>
+      <div class="pbody">
+        <h3 data-i18n="proj.p2.h">SECS Simulator</h3>
+        <p data-i18n="proj.p2.p">Configurable EAP host emulator for SECS/GEM communication scenarios. Lets QA/FAE reproduce field issues in a software-only environment, drastically shortening debug cycles.</p>
+      </div>
+      <div class="pfoot">
+        <div class="pchips"><span class="chip">C#</span><span class="chip">WPF</span><span class="chip">TCP</span></div>
+        <span class="pyear">2025</span>
+      </div>
+    </div>
+
+    <div class="project wide" data-href="https://drive.google.com/file/d/1g05Dfr809aEj-RqyROE5AAdIA0eB6QAk/view">
+      <div class="pbody" style="display:flex; flex-direction:column; justify-content: space-between;">
+        <div>
+          <div class="ptag"><span class="pid">PRJ_03</span><span data-i18n="proj.p3.kind">R&amp;D · THESIS</span></div>
+          <h3 style="margin:16px 0 12px; font-size:28px;" data-i18n="proj.p3.h">DCSA-YOLO — defect detection</h3>
+          <p data-i18n="proj.p3.p">Custom YOLOv11 architecture integrating AFF, DCS, and AIE modules for steel surface defect detection. mAP@50 reached 0.836, a +4% improvement over the YOLOv11 baseline. Published as NYCU master's thesis with full ablation study.</p>
+        </div>
+        <div class="pfoot" style="border-top:1px solid rgba(255,255,255,0.08);">
+          <div class="pchips">
+            <span class="chip">Python</span><span class="chip">PyTorch</span><span class="chip">OpenCV</span><span class="chip">YOLO</span>
+          </div>
+          <span class="pyear">2024—2025</span>
+        </div>
+      </div>
+      <div class="pviz"><img src="Assets/DCSA-YOLO.png" alt="DCSA-YOLO benchmark — 83.6% mAP, beating YOLOv11, RetinaNet, RT-DETR, Faster R-CNN" loading="lazy" /></div>
+    </div>
+
+    <div class="project third" data-href="https://github.com/KaiJuY/PLCSimulation_Service">
+      <div class="ptag"><span class="pid">PRJ_04</span><span data-i18n="proj.p4.kind">TOOL</span></div>
+      <div class="pbody">
+        <h3 data-i18n="proj.p4.h">PLCSimulation_Service</h3>
+        <p data-i18n="proj.p4.p">Script-driven PLC hardware emulator. JSON scripts define behaviors without recompiling. CI/CD-ready.</p>
+      </div>
+      <div class="pfoot">
+        <div class="pchips"><span class="chip">C#</span><span class="chip">WPF</span><span class="chip">JSON</span></div>
+        <span class="pyear">2025</span>
+      </div>
+    </div>
+    <div class="project third" data-href="https://materialmanager-frontend.onrender.com/">
+      <div class="ptag"><span class="pid">PRJ_05</span><span data-i18n="proj.p5.kind">FULL-STACK</span></div>
+      <div class="pbody">
+        <h3 data-i18n="proj.p5.h">Material Manager</h3>
+        <p data-i18n="proj.p5.p">Inventory & order management web app with role-based access, auto consumption, and a clean RESTful API.</p>
+      </div>
+      <div class="pfoot">
+        <div class="pchips"><span class="chip">React</span><span class="chip">Django</span><span class="chip">SQL</span></div>
+        <span class="pyear">2025</span>
+      </div>
+    </div>
+    <div class="project third" data-href="https://divine-whispers-frontend.onrender.com/">
+      <div class="ptag"><span class="pid">PRJ_06</span><span data-i18n="proj.p6.kind">SAAS</span></div>
+      <div class="pbody">
+        <h3 data-i18n="proj.p6.h">Divine Whisper</h3>
+        <p data-i18n="proj.p6.p">AI fortune-draw SaaS. RAG retrieval + paid LLM interpretation pipeline. React + FastAPI, live deployment.</p>
+      </div>
+      <div class="pfoot">
+        <div class="pchips"><span class="chip">React</span><span class="chip">FastAPI</span><span class="chip">RAG</span><span class="chip">LLM</span></div>
+        <span class="pyear">2025</span>
+      </div>
+    </div>
+
+    <div class="project wide">
+      <div class="pbody" style="display:flex; flex-direction:column; justify-content: space-between;">
+        <div>
+          <div class="ptag"><span class="pid">PRJ_07</span><span data-i18n="proj.p7.kind">PRODUCTION · INTERNAL</span></div>
+          <h3 style="margin:16px 0 12px; font-size:28px;" data-i18n="proj.p7.h">SN Version — Process visualization dashboard</h3>
+          <p data-i18n="proj.p7.p">Streamlit-based SPC dashboard for silicon-photonics fiber-array bonding production. Real-time line monitoring, parameter trending, anomaly surfacing. Self-initiated to give engineers visibility without standing at the equipment.</p>
+        </div>
+        <div class="pfoot" style="border-top:1px solid rgba(255,255,255,0.08);">
+          <div class="pchips">
+            <span class="chip">Python</span><span class="chip">Streamlit</span><span class="chip">Pandas</span><span class="chip">Plotly</span>
+          </div>
+          <span class="pyear">2026</span>
+        </div>
+      </div>
+      <div class="pviz"><img src="Assets/SN_Version.png" alt="SN Version Streamlit dashboard — measurement trend, target/tolerance bands, real-time SPC" loading="lazy" /></div>
+    </div>
+  </div>
+</section>
+
+<!-- IN THE BAG -->
+<section id="bag">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow" data-i18n="bag.head.eye">// In the toolkit / 2026</div>
+      <h2 data-i18n="bag.head.h2">Tools of<br />the obsession.</h2>
+    </div>
+    <div class="meta" data-i18n="bag.head.meta">4 langs · 10+ frameworks · always sharp</div>
+  </div>
+  <div class="bag">
+    <div class="bag-list">
+      <div class="club">
+        <div class="club-num">DR</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k1.n">Python</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k1.b">NumPy · Pandas · FastAPI · Django · OpenCV · Streamlit · asyncio</div>
+        </div>
+        <div class="club-loft">9°</div>
+      </div>
+      <div class="club">
+        <div class="club-num">3W</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k2.n">C# / .NET</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k2.b">WPF · async/await · multi-threaded · event-driven · design patterns (30+ studied, chosen per use case) · 5+ industrial products</div>
+        </div>
+        <div class="club-loft">15°</div>
+      </div>
+      <div class="club">
+        <div class="club-num">UT</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k3.n">C / C++</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k3.b">High-perf modules · custom libs replacing 3rd-party · CMake</div>
+        </div>
+        <div class="club-loft">18°</div>
+      </div>
+      <div class="club">
+        <div class="club-num">4-9</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k4.n">AI · ML · DL</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k4.b">Transformer · Mamba · CNN · YOLO · Random Forest · Decision Tree · GA · PSO · LLM · RAG</div>
+        </div>
+        <div class="club-loft">—</div>
+      </div>
+      <div class="club">
+        <div class="club-num">PW</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k5.n">Embedded · MCU</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k5.b">STM32 · STM32CubeIDE · GPIO · LCD/Keypad/7-Seg · embedded Linux</div>
+        </div>
+        <div class="club-loft">46°</div>
+      </div>
+      <div class="club">
+        <div class="club-num">52</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k6.n">Comm Protocols</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k6.b">SECS/GEM · HSMS · TCP/IP · UART/SPI/I2C · PLC Ethernet · CIM/EAP</div>
+        </div>
+        <div class="club-loft">52°</div>
+      </div>
+      <div class="club">
+        <div class="club-num">56</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k7.n">Database · SQL</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k7.b">MySQL · SQL design · ORM (Django/SQLAlchemy) · ChromaDB · cache patterns</div>
+        </div>
+        <div class="club-loft">56°</div>
+      </div>
+      <div class="club" style="border-bottom:none;">
+        <div class="club-num">PT</div>
+        <div>
+          <div class="club-name" data-i18n="bag.k8.n">DevOps · Tools</div>
+          <div class="club-brand" style="margin-top:4px;" data-i18n="bag.k8.b">Docker · Git · CI/CD · Linux (Ubuntu/CentOS) · Windows · MATLAB</div>
+        </div>
+        <div class="club-loft">3.5°</div>
+      </div>
+    </div>
+
+    <div class="scorecard">
+      <div class="sc-head">
+        <div>
+          <h4 data-i18n="build.h">Recent Build</h4>
+          <div class="course" style="margin-top:6px;" data-i18n="build.course">DCSA-YOLO · Custom YOLOv11 architecture</div>
+          <div class="par" style="margin-top:8px;" data-i18n="build.meta">Jun 2025 · 200 epochs · NEU-DET dataset</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="score">.836</div>
+          <div class="par" data-i18n="build.delta">+4% · best of run</div>
+        </div>
+      </div>
+      <div class="holes-row-lbl" data-i18n="build.row1">Phase 1 · baseline &amp; module ablations</div>
+      <div class="holes">
+        <div class="hole"><span class="h-n">B0·v0</span><span class="h-s">.80</span></div>
+        <div class="hole"><span class="h-n">B0·v1</span><span class="h-s">.79</span></div>
+        <div class="hole"><span class="h-n">B1·v0</span><span class="h-s">.80</span></div>
+        <div class="hole bogey"><span class="h-n">B1·v1</span><span class="h-s">.78</span></div>
+        <div class="hole"><span class="h-n">B2·v0</span><span class="h-s">.80</span></div>
+        <div class="hole"><span class="h-n">B2·v1</span><span class="h-s">.81</span></div>
+        <div class="hole birdie"><span class="h-n">AFF·a</span><span class="h-s">.82</span></div>
+        <div class="hole"><span class="h-n">DCS·a</span><span class="h-s">.79</span></div>
+        <div class="hole"><span class="h-n">B3·v0</span><span class="h-s">.81</span></div>
+      </div>
+      <div class="holes-row-lbl" data-i18n="build.row2">Phase 2 · combined modules</div>
+      <div class="holes">
+        <div class="hole"><span class="h-n">AFF·b</span><span class="h-s">.81</span></div>
+        <div class="hole"><span class="h-n">DCS·b</span><span class="h-s">.81</span></div>
+        <div class="hole"><span class="h-n">A+D·1</span><span class="h-s">.82</span></div>
+        <div class="hole birdie"><span class="h-n">AIE·a</span><span class="h-s">.83</span></div>
+        <div class="hole"><span class="h-n">AIE·b</span><span class="h-s">.81</span></div>
+        <div class="hole birdie"><span class="h-n">A+I·1</span><span class="h-s">.83</span></div>
+        <div class="hole"><span class="h-n">D+I·1</span><span class="h-s">.81</span></div>
+        <div class="hole"><span class="h-n">ALL·v1</span><span class="h-s">.82</span></div>
+        <div class="hole eagle"><span class="h-n">ALL·v2</span><span class="h-s">.836</span></div>
+      </div>
+      <div style="display:grid; grid-template-columns: repeat(4,1fr); gap: 24px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line);">
+        <div>
+          <div class="mono" style="font-size:10px; color:var(--ink-3); letter-spacing:0.16em;" data-i18n="build.f1">BASELINE</div>
+          <div class="mono" style="font-size:20px; margin-top:4px;">.80<span style="color:var(--ink-3); font-size:14px;">0</span></div>
+        </div>
+        <div>
+          <div class="mono" style="font-size:10px; color:var(--ink-3); letter-spacing:0.16em;" data-i18n="build.f2">FINAL</div>
+          <div class="mono" style="font-size:20px; margin-top:4px;">.83<span style="color:var(--ink-3); font-size:14px;">6</span></div>
+        </div>
+        <div>
+          <div class="mono" style="font-size:10px; color:var(--ink-3); letter-spacing:0.16em;" data-i18n="build.f3">DELTA</div>
+          <div class="mono" style="font-size:20px; margin-top:4px;">+4<span style="color:var(--ink-3); font-size:14px;">%</span></div>
+        </div>
+        <div>
+          <div class="mono" style="font-size:10px; color:var(--ink-3); letter-spacing:0.16em;" data-i18n="build.f4">EPOCHS</div>
+          <div class="mono" style="font-size:20px; margin-top:4px;">200</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TIMELINE -->
+<section id="career">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow" data-i18n="tl.head.eye">// Trajectory / 2016—now</div>
+      <h2 data-i18n="tl.head.h2">Built backends.<br />Built systems.</h2>
+    </div>
+    <div class="meta" data-i18n="tl.head.meta">10 yrs · 4 employers · 1 obsession</div>
+  </div>
+  <div class="timeline">
+    <div class="tl-item now">
+      <div class="tl-year" data-i18n="tl.i1.year">2025.11 — now</div>
+      <div>
+        <h4 data-i18n="tl.i1.h">Software R&amp;D Assistant Manager</h4>
+        <div class="tl-org" data-i18n="tl.i1.org">SunSun Technology · Hsinchu, Taiwan</div>
+        <p data-i18n="tl.i1.p">Leading the software team for high-precision fiber-array bonding equipment in silicon photonics. Designed a 4-view CCD vision algorithm and multi-axis motor control achieving 2µm alignment. Architected equipment communication and SECS/GEM compliance for CIM/EAP host integration. Initiated in-house SPC dashboard and process visualization.</p>
+        <div class="tl-tags"><span class="chip">Lead</span><span class="chip">Vision</span><span class="chip">SECS/GEM</span><span class="chip">2µm</span></div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year" data-i18n="tl.i2.year">2021.06 — 2025.11</div>
+      <div>
+        <h4 data-i18n="tl.i2.h">Software R&amp;D Assistant Manager</h4>
+        <div class="tl-org" data-i18n="tl.i2.org">Jcc Software Technology · Hsinchu, Taiwan</div>
+        <p data-i18n="tl.i2.p">Architected the software core for a new EFEM product line — stable annual sales of 40–60 units, ~$1.2M–$1.8M revenue. Built a proprietary simulation/emulator stack to validate hardware + comm protocols, cutting on-site debug time 33%. Refactored legacy systems into high-perf C++ modules, lifting project margin 4%. Managed 4 engineers; coordinated with hardware vendors for 100% spec compliance.</p>
+        <div class="tl-tags"><span class="chip">Architect</span><span class="chip">C#</span><span class="chip">C++</span><span class="chip">EFEM</span></div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year" data-i18n="tl.i3.year">2018.02 — 2021.05</div>
+      <div>
+        <h4 data-i18n="tl.i3.h">Process Engineer</h4>
+        <div class="tl-org" data-i18n="tl.i3.org">Tokyo Electron · Hsinchu, Taiwan</div>
+        <p data-i18n="tl.i3.p">Cut process cycle time 11% while improving profile health 9% through recipe optimization. Built VB/Script automation for raw data consolidation, lifting engineering analysis efficiency 60%. Foundation for later structural-analysis thinking in software systems.</p>
+        <div class="tl-tags"><span class="chip">Process</span><span class="chip">Automation</span><span class="chip">Data</span></div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-year" data-i18n="tl.i4.year">2010.09 — 2025.06</div>
+      <div>
+        <h4 data-i18n="tl.i4.h">M.S. Precision &amp; Automation · NYCU</h4>
+        <div class="tl-org" data-i18n="tl.i4.org">+ M.S. Semiconductor Process · NCTU (partial) · B.S. Chemical Eng. · Yuntech</div>
+        <p data-i18n="tl.i4.p">NYCU master's thesis: Advanced Defect Detection using Deep Learning Architectures (DCSA-YOLO, mAP@50 0.836, +4% over baseline). Coursework: DSP, FIR/IIR filters in MATLAB, microprocessor system design, control system design.</p>
+        <div class="tl-tags"><span class="chip">NYCU</span><span class="chip">DSP</span><span class="chip">Control</span><span class="chip">DL</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact">
+  <div class="contact">
+    <div>
+      <h2 data-i18n="contact.h2">Let's build<br />something <span class="serif">precise.</span></h2>
+      <p style="color:var(--ink-2); font-size:16px; max-width: 600px; margin-top: 24px; line-height: 1.55;" data-i18n="contact.sub">
+        Open to senior / staff roles in <b>backend, platform, or AI systems</b> engineering, and to <b>collaboration</b> on real products. Currently exploring real-time speech agents, hospitality AI assistants, and LLM evaluation harnesses. Hsinchu · remote · Taiwan-friendly.
+      </p>
+    </div>
+    <div class="contact-side">
+      <a href="mailto:sungodfever@gmail.com"><span>sungodfever@gmail.com</span><span>↗</span></a>
+      <a href="tel:+886921407663"><span>+886 921 407 663</span><span>↗</span></a>
+      <a href="https://github.com/KaiJuY" target="_blank" rel="noopener"><span>github.com/KaiJuY</span><span>↗</span></a>
+    </div>
+  </div>
+</section>
+
+<div class="footnote">
+  <span data-i18n="footer.left">© 2026 KAI-JU YANG · BUILT IN VS, SHIPPED FROM HSINCHU</span>
+  <span data-i18n="footer.right">VER 9.4.0 · TRACKED · LIVE</span>
+</div>
+
+</main>
+
+<!-- React + Babel for the Tweaks panel only -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<div id="tweaks-root"></div>
+
+<script>
+  // ─── Speed-streak generator ───
+  (function makeStreaks() {
+    const host = document.getElementById('streaks');
+    const N = 14;
+    for (let i = 0; i < N; i++) {
+      const s = document.createElement('div');
+      s.className = 'streak';
+      s.style.top = (Math.random() * 100) + 'vh';
+      s.style.width = (60 + Math.random() * 240) + 'px';
+      s.style.animationDuration = (1.6 + Math.random() * 2.2) + 's';
+      s.style.animationDelay = (-Math.random() * 4) + 's';
+      s.style.opacity = 0.3 + Math.random() * 0.7;
+      host.appendChild(s);
+    }
+  })();
+
+
+  // ─── i18n: dictionary, applyLang, toggle ───
+  const I18N = {
+    en: {
+      // brand + nav
+      'brand.name': 'Kai-Ju Yang',
+      'brand.tag': 'ALLEN · SE · 9+ YRS',
+      'nav.index': 'Index',
+      'nav.pursuits': 'Pursuits',
+      'nav.work': 'Work',
+      'nav.toolkit': 'Toolkit',
+      'nav.career': 'Trajectory',
+      'nav.contact': 'Contact',
+      'nav.cta': 'Open to collaboration',
+      // hero
+      'hero.file': 'FILE — 06.05.2026 / TPE-HSZ',
+      'hero.ver': 'PROFILE_v9.4',
+      'hero.title': 'Software<br />is passion,<br />system design<br />is <span class=\"serif\">art</span>.',
+      'hero.sub': 'Kai-Ju Yang — Senior Software Engineer with 9+ years building production-grade systems. From C# / C++ / Python platform engineering to React + FastAPI full-stack and PyTorch · LLM · RAG pipelines. Every system treated like an industrial product — modular, testable, designed to age well. Headed toward AI systems engineering. Hsinchu, Taiwan.',
+      'hero.stat1': 'Years shipping',
+      'hero.stat2': 'Production systems',
+      'hero.stat3': 'Live products',
+      'hero.tracked': '———— TRACKED',
+      'hero.scroll': 'Scroll · flythrough',
+      // flythrough cards
+      'fly.c0.tag': '// automation',
+      'fly.c0.h': 'EFEM Automation Framework',
+      'fly.c0.p': 'C# core for 6 EFEM CIM systems shipped to major fabs. Stable annual sales, 99.9%+ uptime.',
+      'fly.c0.s': 'C# / .NET',
+      'fly.c1.tag': '// protocols',
+      'fly.c1.h': 'SECS/GEM Validation Tool',
+      'fly.c1.p': 'EAP host emulator for software-only protocol testing. Cuts on-site debug time 33%.',
+      'fly.c1.s': 'C# / WPF',
+      'fly.c2.tag': '// ai_research',
+      'fly.c2.h': 'DCSA-YOLO defect detection',
+      'fly.c2.p': 'Custom YOLOv11 with AFF + DCS + AIE modules. mAP@50 0.836, +4% over baseline.',
+      'fly.c2.s': 'PYTORCH',
+      'fly.c3.tag': '// saas',
+      'fly.c3.h': 'Divine Whisper',
+      'fly.c3.p': 'Full-stack RAG app. React + FastAPI, vector retrieval + paid LLM interpretation.',
+      'fly.c3.s': 'FASTAPI / RAG',
+      // projects
+      'proj.head.eye': '// Selected work / 2016—2026',
+      'proj.head.h2': 'Systems that ship<br />and stay shipped.',
+      'proj.head.meta': '10+ projects · 10 yrs · TPE / HSZ',
+      'proj.p1.kind': 'FEATURED',
+      'proj.p1.h': 'EFEM Automation Framework',
+      'proj.p1.p': "C# software core for a new EFEM (Equipment Front End Module) product line. Integrated complex hardware logic with upper-level CIM/EAP host systems. Shipped 6 systems to major semiconductor fabs at 40–60 units/year, generating ~$1.2M–$1.8M annual revenue. Stable for 4+ years.",
+      'proj.p2.kind': 'DEMO · LIVE',
+      'proj.p2.h': 'SECS Simulator',
+      'proj.p2.p': 'Configurable EAP host emulator for SECS/GEM communication scenarios. Lets QA/FAE reproduce field issues in a software-only environment, drastically shortening debug cycles.',
+      'proj.p3.kind': 'R&D · THESIS',
+      'proj.p3.h': 'DCSA-YOLO — defect detection',
+      'proj.p3.p': "Custom YOLOv11 architecture integrating AFF, DCS, and AIE modules for steel surface defect detection. mAP@50 reached 0.836, a +4% improvement over the YOLOv11 baseline. Published as NYCU master's thesis with full ablation study.",
+      'proj.p4.kind': 'TOOL',
+      'proj.p4.h': 'PLCSimulation_Service',
+      'proj.p4.p': 'Script-driven PLC hardware emulator. JSON scripts define behaviors without recompiling. CI/CD-ready.',
+      'proj.p5.kind': 'FULL-STACK',
+      'proj.p5.h': 'Material Manager',
+      'proj.p5.p': 'Inventory & order management web app with role-based access, auto consumption, and a clean RESTful API.',
+      'proj.p6.kind': 'SAAS',
+      'proj.p6.h': 'Divine Whisper',
+      'proj.p6.p': 'AI fortune-draw SaaS. RAG retrieval + paid LLM interpretation pipeline. React + FastAPI, live deployment.',
+      'proj.p7.kind': 'PRODUCTION · INTERNAL',
+      'proj.p7.h': 'SN Version — Process visualization dashboard',
+      'proj.p7.p': 'Streamlit-based SPC dashboard for silicon-photonics fiber-array bonding production. Real-time line monitoring, parameter trending, anomaly surfacing. Self-initiated to give engineers visibility without standing at the equipment.',
+      // toolkit
+      'bag.head.eye': '// In the toolkit / 2026',
+      'bag.head.h2': 'Tools of<br />the obsession.',
+      'bag.head.meta': '4 langs · 10+ frameworks · always sharp',
+      'bag.k1.n': 'Python',
+      'bag.k1.b': 'NumPy · Pandas · FastAPI · Django · OpenCV · Streamlit · asyncio',
+      'bag.k2.n': 'C# / .NET',
+      'bag.k2.b': 'WPF · async/await · multi-threaded · event-driven · design patterns (30+ studied, chosen per use case) · 5+ industrial products',
+      'bag.k3.n': 'C / C++',
+      'bag.k3.b': 'High-perf modules · custom libs replacing 3rd-party · CMake',
+      'bag.k4.n': 'AI · ML · DL',
+      'bag.k4.b': 'Transformer · Mamba · CNN · YOLO · Random Forest · Decision Tree · GA · PSO · LLM · RAG',
+      'bag.k5.n': 'Embedded · MCU',
+      'bag.k5.b': 'STM32 · STM32CubeIDE · GPIO · LCD/Keypad/7-Seg · embedded Linux',
+      'bag.k6.n': 'Comm Protocols',
+      'bag.k6.b': 'SECS/GEM · HSMS · TCP/IP · UART/SPI/I2C · PLC Ethernet · CIM/EAP',
+      'bag.k7.n': 'Database · SQL',
+      'bag.k7.b': 'MySQL · SQL design · ORM (Django/SQLAlchemy) · ChromaDB · cache patterns',
+      'bag.k8.n': 'DevOps · Tools',
+      'bag.k8.b': 'Docker · Git · CI/CD · Linux (Ubuntu/CentOS) · Windows · MATLAB',
+      // recent build
+      'build.h': 'Recent Build',
+      'build.course': 'DCSA-YOLO · Custom YOLOv11 architecture',
+      'build.meta': 'Jun 2025 · 200 epochs · NEU-DET dataset',
+      'build.delta': '+4% · best of run',
+      'build.row1': 'Phase 1 · baseline & module ablations',
+      'build.row2': 'Phase 2 · combined modules',
+      'build.f1': 'BASELINE',
+      'build.f2': 'FINAL',
+      'build.f3': 'DELTA',
+      'build.f4': 'EPOCHS',
+      // timeline
+      'tl.head.eye': '// Trajectory / 2016—now',
+      'tl.head.h2': 'Built backends.<br />Built systems.',
+      'tl.head.meta': '10 yrs · 4 employers · 1 obsession',
+      'tl.i1.year': '2025.11 — now',
+      'tl.i1.h': 'Software R&D Assistant Manager',
+      'tl.i1.org': 'SunSun Technology · Hsinchu, Taiwan',
+      'tl.i1.p': 'Leading the software team for high-precision fiber-array bonding equipment in silicon photonics. Designed a 4-view CCD vision algorithm and multi-axis motor control achieving 2µm alignment. Architected equipment communication and SECS/GEM compliance for CIM/EAP host integration. Initiated in-house SPC dashboard and process visualization.',
+      'tl.i2.year': '2021.06 — 2025.11',
+      'tl.i2.h': 'Software R&D Assistant Manager',
+      'tl.i2.org': 'Jcc Software Technology · Hsinchu, Taiwan',
+      'tl.i2.p': 'Architected the software core for a new EFEM product line — stable annual sales of 40–60 units, ~$1.2M–$1.8M revenue. Built a proprietary simulation/emulator stack to validate hardware + comm protocols, cutting on-site debug time 33%. Refactored legacy systems into high-perf C++ modules, lifting project margin 4%. Managed 4 engineers; coordinated with hardware vendors for 100% spec compliance.',
+      'tl.i3.year': '2018.02 — 2021.05',
+      'tl.i3.h': 'Process Engineer',
+      'tl.i3.org': 'Tokyo Electron · Hsinchu, Taiwan',
+      'tl.i3.p': 'Cut process cycle time 11% while improving profile health 9% through recipe optimization. Built VB/Script automation for raw data consolidation, lifting engineering analysis efficiency 60%. Foundation for later structural-analysis thinking in software systems.',
+      'tl.i4.year': '2010.09 — 2025.06',
+      'tl.i4.h': 'M.S. Precision & Automation · NYCU',
+      'tl.i4.org': '+ M.S. Semiconductor Process · NCTU (partial) · B.S. Chemical Eng. · Yuntech',
+      'tl.i4.p': "NYCU master's thesis: Advanced Defect Detection using Deep Learning Architectures (DCSA-YOLO, mAP@50 0.836, +4% over baseline). Coursework: DSP, FIR/IIR filters in MATLAB, microprocessor system design, control system design.",
+      // contact + footer
+      'contact.h2': 'Let\'s build<br />something <span class=\"serif\">precise.</span>',
+      'contact.sub': 'Open to senior / staff roles in <b>backend, platform, or AI systems</b> engineering, and to <b>collaboration</b> on real products. Currently exploring real-time speech agents, hospitality AI assistants, and LLM evaluation harnesses. Hsinchu · remote · Taiwan-friendly.',
+      'footer.left': '© 2026 KAI-JU YANG · BUILT IN VS, SHIPPED FROM HSINCHU',
+      'footer.right': 'VER 9.4.0 · TRACKED · LIVE'
+    },
+    zh: {
+      'brand.name': '楊凱儒',
+      'brand.tag': 'ALLEN · 軟體工程師 · 9+ 年',
+      'nav.index': '首頁',
+      'nav.pursuits': '軌跡',
+      'nav.work': '作品',
+      'nav.toolkit': '工具箱',
+      'nav.career': '經歷',
+      'nav.contact': '聯絡',
+      'nav.cta': '歡迎合作機會',
+      'hero.file': 'FILE — 06.05.2026 / TPE-HSZ',
+      'hero.ver': 'PROFILE_v9.4',
+      'hero.title': '寫軟體<br />是熱情，<br />設計系統<br />是 <span class=\"serif\">藝術</span>。',
+      'hero.sub': '楊凱儒 — 資深軟體工程師，9+ 年建構 production 等級系統的經驗。從 C# / C++ / Python 平台工程，到 React + FastAPI 全端與 PyTorch · LLM · RAG 應用。每個系統都以工業級的標準對待 — 模組化、可測試、為長期維護而生。下一站：AI Systems 工程。新竹，台灣。',
+      'hero.stat1': '年資',
+      'hero.stat2': '已上線系統',
+      'hero.stat3': '線上產品',
+      'hero.tracked': '———— 追蹤中',
+      'hero.scroll': '向下捲動 · 啟動',
+      'fly.c0.tag': '// 自動化',
+      'fly.c0.h': 'EFEM 自動化框架',
+      'fly.c0.p': 'C# 軟體核心，導入 6 套 EFEM CIM 系統至主要 Fab。穩定銷量、99.9%+ 可用度。',
+      'fly.c0.s': 'C# / .NET',
+      'fly.c1.tag': '// 通訊協定',
+      'fly.c1.h': 'SECS/GEM 驗證工具',
+      'fly.c1.p': 'EAP Host 模擬器，純軟體驗證通訊流程，現場除錯時間降低 33%。',
+      'fly.c1.s': 'C# / WPF',
+      'fly.c2.tag': '// AI 研究',
+      'fly.c2.h': 'DCSA-YOLO 缺陷偵測',
+      'fly.c2.p': '客製化 YOLOv11 架構，加入 AFF、DCS、AIE 模組。mAP@50 0.836，相較 baseline 提升 4%。',
+      'fly.c2.s': 'PYTORCH',
+      'fly.c3.tag': '// SaaS',
+      'fly.c3.h': 'Divine Whisper',
+      'fly.c3.p': '全端 RAG 應用。React + FastAPI，向量檢索 + 付費 LLM 詮釋管線。',
+      'fly.c3.s': 'FASTAPI / RAG',
+      'proj.head.eye': '// 精選作品 / 2016—2026',
+      'proj.head.h2': '能上線、<br />能長期穩定的系統。',
+      'proj.head.meta': '10+ 專案 · 10 年 · 台北 / 新竹',
+      'proj.p1.kind': '主打',
+      'proj.p1.h': 'EFEM 自動化框架',
+      'proj.p1.p': '為新一代 EFEM（Equipment Front End Module）產品線設計 C# 軟體核心，整合複雜硬體邏輯與 CIM/EAP 上位系統。導入 6 套至主要半導體 Fab，年銷 40–60 台、年營收約 1.2M–1.8M USD，穩定運行 4+ 年。',
+      'proj.p2.kind': '可線上體驗',
+      'proj.p2.h': 'SECS Simulator',
+      'proj.p2.p': '可設定的 EAP Host 模擬器，覆蓋 SECS/GEM 多種情境。讓 QA / FAE 在純軟體環境重現現場問題，大幅縮短除錯週期。',
+      'proj.p3.kind': '研究 · 碩論',
+      'proj.p3.h': 'DCSA-YOLO — 缺陷偵測',
+      'proj.p3.p': '客製化 YOLOv11 架構整合 AFF、DCS、AIE 三個模組進行鋼材表面缺陷偵測。mAP@50 達 0.836，相較 baseline 提升 4%。NYCU 碩士論文，附完整 ablation study。',
+      'proj.p4.kind': '工具',
+      'proj.p4.h': 'PLCSimulation_Service',
+      'proj.p4.p': '腳本驅動的 PLC 硬體模擬器。JSON 腳本即可定義行為，無需重新編譯，可整合 CI/CD。',
+      'proj.p5.kind': '全端',
+      'proj.p5.h': 'Material Manager',
+      'proj.p5.p': '物料訂單管理 Web 應用，含角色權限、自動扣帳與 RESTful API。',
+      'proj.p6.kind': 'SaaS',
+      'proj.p6.h': 'Divine Whisper',
+      'proj.p6.p': 'AI 抽籤 SaaS。RAG 檢索 + 付費 LLM 詮釋管線，React + FastAPI，已上線運作。',
+      'proj.p7.kind': '上線中 · 內部使用',
+      'proj.p7.h': 'SN Version — 製程資料可視化儀表板',
+      'proj.p7.p': '為矽光子光纖貼合產線打造的 Streamlit SPC 儀表板。即時產線監控、參數趨勢追蹤、異常告警。自主發起，讓工程師不用站在機台旁也能掌握狀態。',
+      'bag.head.eye': '// 工具箱 / 2026',
+      'bag.head.h2': '常用工具<br />與框架。',
+      'bag.head.meta': '4 種語言 · 10+ 框架 · 隨時就位',
+      'bag.k1.n': 'Python',
+      'bag.k1.b': 'NumPy · Pandas · FastAPI · Django · OpenCV · Streamlit · asyncio',
+      'bag.k2.n': 'C# / .NET',
+      'bag.k2.b': 'WPF · async/await · 多執行緒 · 事件驅動 · 設計模式 (學過 30+ 種，依情境選用) · 5+ 套工業產品',
+      'bag.k3.n': 'C / C++',
+      'bag.k3.b': '高效能模組 · 自製函式庫取代第三方 · CMake',
+      'bag.k4.n': 'AI · ML · DL',
+      'bag.k4.b': 'Transformer · Mamba · CNN · YOLO · 隨機森林 · 決策樹 · 基因演算法 · PSO · LLM · RAG',
+      'bag.k5.n': '嵌入式 · MCU',
+      'bag.k5.b': 'STM32 · STM32CubeIDE · GPIO · LCD/鍵盤/七段顯示 · 嵌入式 Linux',
+      'bag.k6.n': '通訊協定',
+      'bag.k6.b': 'SECS/GEM · HSMS · TCP/IP · UART/SPI/I2C · PLC Ethernet · CIM/EAP',
+      'bag.k7.n': '資料庫 · SQL',
+      'bag.k7.b': 'MySQL · SQL 設計 · ORM (Django/SQLAlchemy) · ChromaDB · cache 策略',
+      'bag.k8.n': 'DevOps · 工具',
+      'bag.k8.b': 'Docker · Git · CI/CD · Linux (Ubuntu/CentOS) · Windows · MATLAB',
+      'build.h': '最新作品',
+      'build.course': 'DCSA-YOLO · 客製化 YOLOv11 架構',
+      'build.meta': '2025/06 · 200 epochs · NEU-DET 資料集',
+      'build.delta': '+4% · 最佳表現',
+      'build.row1': 'Phase 1 · baseline 與單模組消融',
+      'build.row2': 'Phase 2 · 模組組合',
+      'build.f1': 'BASELINE',
+      'build.f2': 'FINAL',
+      'build.f3': 'DELTA',
+      'build.f4': 'EPOCHS',
+      'tl.head.eye': '// 經歷 / 2016—現在',
+      'tl.head.h2': '寫過 backend，<br />也建過系統。',
+      'tl.head.meta': '10 年 · 4 個東家 · 1 件熱情',
+      'tl.i1.year': '2025.11 — 現在',
+      'tl.i1.h': '軟體研發副理',
+      'tl.i1.org': '光陽光電股份有限公司 · 新竹',
+      'tl.i1.p': '帶領軟體團隊負責矽光子（Silicon Photonics）高精密光纖陣列貼合設備之軟硬體系統整合。設計 4 視角 CCD 影像演算與多軸馬達控制，達 2µm 等級對位精度。規劃設備通訊架構與 SECS/GEM 標準，使設備可與客戶 CIM/EAP 無縫整合。並自主發起製程資料可視化與 SPC 軟體研發。',
+      'tl.i2.year': '2021.06 — 2025.11',
+      'tl.i2.h': '軟體研發副理',
+      'tl.i2.org': '五強軟體科技 · 新竹',
+      'tl.i2.p': '為新一代 EFEM 產品線設計軟體核心 — 年銷 40–60 台、年營收約 1.2M–1.8M USD。自主開發模擬器與 Emulator 驗證機制，覆蓋硬體與通訊協定，現場除錯時間降低 33%。重構舊系統並導入高效能 C++ 模組，毛利提升 4%。管理 4 名工程師，與硬體廠商協調規格 100% 達標。',
+      'tl.i3.year': '2018.02 — 2021.05',
+      'tl.i3.h': '製程工程師',
+      'tl.i3.org': '東京威力科創 · 新竹',
+      'tl.i3.p': '透過 Recipe 優化降低 11% Cycle Time、提升 9% Profile Health。以 VB / Script 自動化整合海量原始資料，工程分析效率提升 60%，奠定後續軟體系統設計的結構性思維。',
+      'tl.i4.year': '2010.09 — 2025.06',
+      'tl.i4.h': '陽明交通大學 · 精密與自動化工程 碩士',
+      'tl.i4.org': '+ 交通大學 · 半導體材料與製程設備 碩士肄業 · 雲林科技大學 · 化學工程與材料工程 學士',
+      'tl.i4.p': 'NYCU 碩士論文：Advanced Defect Detection using Deep Learning Architectures（DCSA-YOLO，mAP@50 0.836，較 baseline 提升 4%）。修課含 DSP、MATLAB FIR/IIR filter、微處理機系統設計、控制系統設計。',
+      'contact.h2': '一起打造<br /><span class=\"serif\">精準</span>的東西。',
+      'contact.sub': '尋找 <b>後端、平台、或 AI Systems</b> 領域的 senior 與 staff 職缺，也歡迎實際產品上的 <b>合作機會</b>。目前正在投入即時口說對談、民宿 AI 助手、與 LLM 評估 harness 的研究與實作。新竹 · 遠端 · 台灣優先。',
+      'footer.left': '© 2026 楊凱儒 · 在新竹開發、發布',
+      'footer.right': 'VER 9.4.0 · TRACKED · LIVE'
+    }
+  };
+  function applyLang(lang) {
+    if (!I18N[lang]) lang = 'en';
+    document.documentElement.lang = lang === 'zh' ? 'zh-Hant' : 'en';
+    document.documentElement.dataset.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var key = el.dataset.i18n;
+      var val = I18N[lang][key];
+      if (val != null) el.innerHTML = val;
+    });
+    var btn = document.getElementById('navLang');
+    if (btn) btn.textContent = lang === 'en' ? '中' : 'EN';
+    try { localStorage.setItem('profile-lang', lang); } catch (e) {}
+    // Force flythrough caption to re-render in the new language (frame guard would otherwise skip it)
+    var capEl = document.getElementById('stageCaption');
+    if (capEl) capEl.dataset.frame = '';
+    if (typeof onScroll === 'function') { try { onScroll(); } catch (_) {} }
+  }
+  var __initLang = (function () {
+    try {
+      var saved = localStorage.getItem('profile-lang');
+      if (saved === 'en' || saved === 'zh') return saved;
+    } catch (e) {}
+    var nl = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    return nl.indexOf('zh') === 0 ? 'zh' : 'en';
+  })();
+
+  // ─── Smooth nav jumps + active section ───
+  document.querySelectorAll('[data-jump]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.getAttribute('data-jump');
+      const el = document.getElementById(id);
+      if (el) window.scrollTo({ top: el.offsetTop - 60, behavior: 'smooth' });
+    });
+  });
+
+  const sectionIds = ['hero','flythrough','projects','bag','career','contact'];
+  const navMap = {hero:'Index', flythrough:'Pursuits', projects:'Work', bag:'In the Bag', career:'Trajectory', contact:'Contact'};
+  function updateActive() {
+    const y = window.scrollY + window.innerHeight * 0.35;
+    let cur = sectionIds[0];
+    for (const id of sectionIds) {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= y) cur = id;
+    }
+    document.querySelectorAll('.nav-links a').forEach(a => {
+      a.classList.toggle('active', a.getAttribute('data-jump') === cur);
+    });
+  }
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+
+  // ─── Sticky flythrough scroll-driven choreography ───
+  const rail    = document.getElementById('flyRail');
+  const ball    = document.getElementById('flyBall');
+  const ballInner = document.getElementById('flyBallInner');
+  const ballTrail = document.getElementById('ballTrail');
+  const flyBlur = document.getElementById('flyBlur');
+  const tee     = document.getElementById('tee');
+  const flash   = document.getElementById('impactFlash');
+  const sparks  = document.getElementById('impactSparks');
+  const flowGrid = document.getElementById('flowGrid');
+  const dataFlow = document.getElementById('dataFlow');
+  const cards   = Array.from(document.querySelectorAll('.glass-card[data-card]'));
+  const caption = document.getElementById('stageCaption');
+  const progress = document.getElementById('stageProgress');
+
+  // Build digital data-flow lines + glyphs once
+  (function buildDataFlow() {
+    const N_LINES = 18;
+    for (let i = 0; i < N_LINES; i++) {
+      const l = document.createElement('div');
+      l.className = 'line';
+      l.style.top = (5 + Math.random() * 90) + '%';
+      l.style.width = (80 + Math.random() * 280) + 'px';
+      l.style.setProperty('--ld', (1.4 + Math.random() * 2.6) + 's');
+      l.style.animationDelay = (-Math.random() * 4) + 's';
+      l.style.opacity = 0.4 + Math.random() * 0.6;
+      dataFlow.appendChild(l);
+    }
+    const glyphs = ['10110', '0xAF3C', '0011', 'FFE2', '01', '0xD9', '110100', '0x7C'];
+    for (let i = 0; i < 10; i++) {
+      const g = document.createElement('div');
+      g.className = 'glyph';
+      g.textContent = glyphs[Math.floor(Math.random() * glyphs.length)];
+      g.style.top = (10 + Math.random() * 80) + '%';
+      g.style.animationDuration = (3 + Math.random() * 4) + 's';
+      g.style.animationDelay = (-Math.random() * 6) + 's';
+      dataFlow.appendChild(g);
+    }
+  })();
+
+  // Continuous ball self-rotation (independent of scroll)
+  let spin = 0;
+  let lastTs = performance.now();
+  function spinTick(ts) {
+    const dt = Math.min(50, ts - lastTs);
+    lastTs = ts;
+    // base spin always running; accelerate during launch
+    spin += (currentSpinSpeed * dt) / 1000;
+    if (ballInner) ballInner.style.transform = `rotate(${spin}deg)`;
+    requestAnimationFrame(spinTick);
+  }
+  let currentSpinSpeed = 60; // deg/sec at rest
+  requestAnimationFrame(spinTick);
+
+  const FRAMES_I18N = {
+    en: [
+      { step: 'FRAME 01 / 04', title: 'Architecture<br />is the craft.',
+        body: 'Modular cores, testable boundaries, clear ownership. Same engineering rigor whether the consumer is a fab tool, a web user, or an LLM agent.' },
+      { step: 'FRAME 02 / 04', title: 'Engineered<br />to last.',
+        body: 'Async pipelines, state machines, event-driven cores. Architectures that age well across teams, releases, and product pivots.' },
+      { step: 'FRAME 03 / 04', title: 'From signals<br />to systems.',
+        body: 'Computer vision, defect detection, RAG retrieval, LLM orchestration. ML pipelines that move from research notebook to production endpoint.' },
+      { step: 'FRAME 04 / 04', title: 'Toward<br />AI systems.',
+        body: 'Real-time speech agents. Domain-specific AI assistants. LLM evaluation harnesses. Where I\u2019m headed next — same engineering discipline, new surface area.' }
+    ],
+    zh: [
+      { step: '畫面 01 / 04', title: '架構<br />是工藝。',
+        body: '模組化核心、可測試邊界、明確的責任分工。同樣的工程嚴謹，無論對象是 fab 設備、Web 使用者，還是 LLM 代理。' },
+      { step: '畫面 02 / 04', title: '工程<br />為長久而生。',
+        body: '非同步流程、狀態機、事件驅動核心。架構要能撐過團隊輪替、版本演進、與產品轉向。' },
+      { step: '畫面 03 / 04', title: '從訊號<br />到系統。',
+        body: '電腦視覺、缺陷偵測、RAG 檢索、LLM 編排 — 把 ML pipeline 從研究 notebook 推到 production endpoint。' },
+      { step: '畫面 04 / 04', title: '邁向<br />AI Systems。',
+        body: '即時口說對談、領域 AI 助手、LLM 評估與 harness。下一段路要走的方向 — 工程紀律不變，戰場變大。' }
+    ]
+  };
+  function getFrames() { return FRAMES_I18N[document.documentElement.dataset.lang] || FRAMES_I18N.en; }
+
+  // Card target positions per frame (relative to viewport center)
+  // Each card has 4 keyframes: {x, y, scale, rot, opacity}
+  // Per-frame carousel: each card sits "on stage" during its own frame
+  // (centered in the right half of viewport — caption owns the left half),
+  // entering from lower-left and exiting upper-right to match the ball's
+  // ballistic arc. Anchor positions vary so each frame feels visually distinct.
+  const cardKeys = [
+    // Card 0 — FRAME 1 anchor: UPPER-RIGHT
+    [
+      { x:  160, y: -180, s: 1.10, r: -3,  o: 1 }, // ON STAGE
+      { x:  720, y: -380, s: 0.70, r:  6,  o: 0 }, // exiting upper-right
+      { x: 1080, y: -540, s: 0.50, r: 10,  o: 0 }, // gone
+      { x: 1340, y: -700, s: 0.40, r: 14,  o: 0 }, // far gone
+    ],
+    // Card 1 — FRAME 2 anchor: LOWER-RIGHT
+    [
+      { x: -740, y:  340, s: 0.55, r: -8,  o: 0 }, // entering from lower-left
+      { x:  180, y:  170, s: 1.10, r:  3,  o: 1 }, // ON STAGE
+      { x:  760, y: -160, s: 0.85, r:  8,  o: 0 }, // exiting upper-right
+      { x: 1180, y: -380, s: 0.60, r: 12,  o: 0 }, // gone
+    ],
+    // Card 2 — FRAME 3 anchor: MID-RIGHT
+    [
+      { x:-1000, y:  500, s: 0.45, r: -10, o: 0 }, // far off lower-left
+      { x: -540, y:  340, s: 0.65, r: -6,  o: 0 }, // entering
+      { x:  240, y:   20, s: 1.10, r:  2,  o: 1 }, // ON STAGE
+      { x:  820, y: -240, s: 0.85, r:  8,  o: 0 }, // exiting upper-right
+    ],
+    // Card 3 — FRAME 4 anchor: UPPER-RIGHT
+    [
+      { x:-1240, y:  600, s: 0.40, r: -12, o: 0 }, // far far off
+      { x: -880, y:  440, s: 0.50, r: -8,  o: 0 }, // still off
+      { x: -440, y:  240, s: 0.70, r: -4,  o: 0 }, // entering lower-left
+      { x:  180, y: -130, s: 1.10, r:  2,  o: 1 }, // ON STAGE
+    ],
+  ];
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+  // Flight path geometry — struck on the left side of the ball, ball launches
+  // up-and-right with a high launch angle (no initial drop). Ballistic arc:
+  // y rises immediately, peaks late, then falls toward the exit on the right.
+  function ballPath(p) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const x0 = vw * 0.12;
+    const y0 = vh * 0.78 - 90;            // ball top sits on tee head
+    // Horizontal travel — fast acceleration off the face, no easing-in dead zone
+    const x = x0 + (vw * 1.05 - x0) * (1 - Math.pow(1 - p, 1.6));
+    // Vertical: launch angle. Use a quadratic that's monotonically rising for
+    // the first ~70% of flight (no initial dip), then descends gently.
+    // height(p) = -4p(p-1.4) scaled — peaks near p≈0.7
+    const peakHeight = vh * 0.62;
+    const h = -4 * p * (p - 1.4) / (1.4 * 1.4); // 0 at p=0, peak ~1 near p=0.7
+    const y = y0 - h * peakHeight;
+    return { x, y };
+  }
+
+  function applyFrame(progressVal) {
+    // Two phases:
+    //  • 0.00 → 0.06  : pre-impact. Ball sits on tee. Tee visible.
+    //  • 0.06         : IMPACT. Flash + sparks fire.
+    //  • 0.06 → 1.00  : flight. Ball follows parabola; cards stream past.
+    const PRE = 0.06;
+    const flightP = Math.max(0, Math.min(1, (progressVal - PRE) / (1 - PRE)));
+    const inFlight = progressVal > PRE;
+    const launching = progressVal > PRE - 0.01 && progressVal < PRE + 0.05;
+
+    // Caption keyframes — driven by flight progress
+    const seg = Math.min(2.999, flightP * 3);
+    const segIdx = Math.floor(seg);
+    const segT = easeInOut(seg - segIdx);
+    const frameIdx = Math.min(3, Math.round(seg));
+    const frame = getFrames()[frameIdx];
+    if (caption.dataset.frame !== String(frameIdx)) {
+      caption.dataset.frame = String(frameIdx);
+      caption.querySelector('.step').textContent = frame.step;
+      caption.querySelector('h3').innerHTML = frame.title;
+      caption.querySelector('p').innerHTML = frame.body;
+      Array.from(progress.children).forEach((seg, i) => {
+        seg.classList.toggle('active', i === frameIdx);
+      });
+    }
+
+    // ── Ball position ──
+    let bx, by, bscale;
+    if (!inFlight) {
+      // resting on tee
+      const teeX = window.innerWidth * 0.12;
+      const teeY = window.innerHeight * 0.78 - 90; // sit on tee top
+      bx = teeX; by = teeY; bscale = 0.42;
+      currentSpinSpeed = 80;
+    } else {
+      const pos = ballPath(flightP);
+      bx = pos.x; by = pos.y;
+      // grows mid-flight as it screams toward camera, then shrinks slightly as it exits
+      bscale = 0.42 + Math.sin(flightP * Math.PI) * 1.4 + flightP * 0.5;
+      // spin acceleration: peaks during mid-flight
+      currentSpinSpeed = 600 + Math.sin(flightP * Math.PI) * 1400;
+    }
+    const ballSize = 320; // matches CSS
+    ball.style.transform = `translate(${bx - ballSize/2}px, ${by - ballSize/2}px) scale(${bscale})`;
+
+    // ── Tee tilt + fade after impact ──
+    const teeOpacity = inFlight ? Math.max(0, 1 - flightP * 4) : 1;
+    tee.style.opacity = teeOpacity;
+    tee.style.transform = inFlight ? `rotate(${Math.min(45, flightP * 80)}deg) translateY(${flightP * 20}px)` : 'rotate(0)';
+
+    // ── Impact flash + sparks ──
+    if (launching) {
+      const fIntensity = 1 - Math.abs(progressVal - PRE) / 0.05;
+      // anchor flash + sparks to the LEFT edge of the ball (clubface contact point)
+      const ballSize = 320;
+      // ball at rest: bx,by are top-left of ball box; left contact point = (bx, by + half*scale)
+      const teeX = window.innerWidth * 0.12;
+      const teeY = window.innerHeight * 0.78 - 90;
+      const restScale = 0.42;
+      const ballCenterX = teeX + ballSize/2 - ballSize * (1 - restScale) / 2 * 0; // ball center
+      // Actually: ball is positioned by translate(bx - ballSize/2, by - ballSize/2) scale,
+      // so ball center stays at (teeX, teeY). Left edge of scaled ball = teeX - (ballSize/2)*restScale
+      const leftEdgeX = teeX - (ballSize / 2) * restScale;
+      const leftEdgeY = teeY;
+
+      flash.style.opacity = fIntensity;
+      flash.style.transform = `translate(${leftEdgeX - 110}px, ${leftEdgeY - 110}px) scale(${0.4 + fIntensity * 1.4})`;
+      sparks.style.opacity = fIntensity;
+      const sScale = 0.5 + fIntensity * 1.5;
+      sparks.style.transform = `translate(${leftEdgeX}px, ${leftEdgeY}px) scale(${sScale})`;
+    } else {
+      flash.style.opacity = 0;
+      sparks.style.opacity = 0;
+    }
+
+    // ── Motion-blur trail behind ball, oriented along velocity ──
+    if (inFlight && flightP < 0.96) {
+      // velocity from numeric derivative
+      const dp = 0.01;
+      const p1 = ballPath(Math.max(0, flightP - dp));
+      const p2 = ballPath(Math.min(1, flightP + dp));
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const speed = Math.hypot(dx, dy);
+      const trailLen = Math.min(520, speed * 6 + 120);
+      ballTrail.style.opacity = Math.min(0.9, 0.3 + flightP * 1.4) * (1 - flightP * 0.5);
+      ballTrail.style.width = trailLen + 'px';
+      ballTrail.style.transform =
+        `translate(${bx}px, ${by}px) rotate(${angle}deg) translateX(-${trailLen}px)`;
+      flyBlur.style.opacity = 0.7;
+      flyBlur.style.transform = `translate(${bx - 300}px, ${by - 40}px) rotate(${angle}deg)`;
+    } else {
+      ballTrail.style.opacity = 0;
+      flyBlur.style.opacity = 0;
+    }
+
+    // ── Digital flow background: scroll grid horizontally with ball motion ──
+    flowGrid.style.backgroundPosition = `${-progressVal * 800}px 0`;
+    // accelerate flow lines via animation-duration multiplier (root css var)
+    document.documentElement.style.setProperty('--flow-speed', String(0.5 + flightP * 2));
+
+    // ── Cards: interpolate between adjacent keyframes (only after impact) ──
+    cards.forEach((el, i) => {
+      const keys = cardKeys[i];
+      const a = keys[segIdx];
+      const b = keys[Math.min(keys.length - 1, segIdx + 1)];
+      const x = lerp(a.x, b.x, segT);
+      const y = lerp(a.y, b.y, segT);
+      const s = lerp(a.s, b.s, segT);
+      const r = lerp(a.r, b.r, segT);
+      const o = lerp(a.o, b.o, segT) * (inFlight ? 1 : 0);
+      el.style.transform =
+        `translate(calc(50vw + ${x}px - 50%), calc(50vh + ${y}px - 50%)) scale(${s}) rotate(${r}deg)`;
+      el.style.opacity = o;
+    });
+  }
+
+  function onScroll() {
+    const r = rail.getBoundingClientRect();
+    const total = rail.offsetHeight - window.innerHeight;
+    const progressVal = Math.max(0, Math.min(1, -r.top / total));
+    applyFrame(progressVal);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  // ─── i18n: now safe to apply, all consts initialized ───
+  applyLang(__initLang);
+  (function wireLangToggle() {
+    var btn = document.getElementById('navLang');
+    if (btn) btn.addEventListener('click', function () {
+      applyLang(document.documentElement.dataset.lang === 'en' ? 'zh' : 'en');
+    });
+  })();
+
+  // ─── Project card click → open project URL in new tab ───
+  document.querySelectorAll('.project[data-href]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      var href = el.getAttribute('data-href');
+      if (!href) return;
+      var newTab = e.metaKey || e.ctrlKey || e.button === 1;
+      if (newTab || true) window.open(href, '_blank', 'noopener');
+    });
+  });
+</script>
+
+<!-- Tweaks (accent color only) -->
+<script type="text/babel">
+  const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+    "accent": "#FF6A00"
+  }/*EDITMODE-END*/;
+
+  function TweaksApp() {
+    const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+    React.useEffect(() => {
+      const root = document.documentElement;
+      root.style.setProperty('--accent', t.accent);
+      // derive softer accent for shadows
+      const hex = t.accent.replace('#','');
+      const r = parseInt(hex.substring(0,2),16), g = parseInt(hex.substring(2,4),16), b = parseInt(hex.substring(4,6),16);
+      root.style.setProperty('--accent-soft', `rgba(${r},${g},${b},0.18)`);
+    }, [t.accent]);
+    return (
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="Aesthetic" />
+        <TweakColor
+          label="Accent"
+          value={t.accent}
+          options={['#FF6A00', '#7CFC00', '#00E5FF', '#C9B57B', '#F43F5E', '#FFFFFF']}
+          onChange={(v) => setTweak('accent', v)}
+        />
+      </TweaksPanel>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('tweaks-root')).render(<TweaksApp />);
+</script>
+
+</body>
+</html>
