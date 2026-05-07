@@ -4,7 +4,7 @@ Personal portfolio site. Static HTML/CSS/JS. Golf-themed visual aesthetic, engin
 
 ## Files
 
-- `Golf Profile.html` — single-file site. All HTML, CSS, inline JS, and i18n dictionary live here. ~92KB.
+- `index.html` — single-file site. All HTML, CSS, inline JS, and i18n dictionary live here. ~92KB. (Renamed from `Golf Profile.html` so Cloudflare Pages / Firebase serve it at `/` by default.)
 - `ball.svg`, `tee.svg` — high-detail SVG assets (157 fibonacci-distributed dimples on the ball; wood-grain tee).
 - `Assets/` — project screenshots referenced from `<img>` inside `.pviz` cards. Add more here when wiring new project visuals.
 - `tweaks-panel.jsx` — design-tool artifact (React + Babel via CDN, accent-color picker). Loads at end of body. Optional for production deploy.
@@ -40,7 +40,7 @@ For multi-edit changes, use a Python helper:
 
 ```python
 import io, sys
-P = 'Golf Profile.html'
+P = 'index.html'
 with io.open(P, 'r', encoding='utf-8') as f: s = f.read()
 repls = [
     ('label', old_str, new_str),
@@ -65,7 +65,7 @@ Logs OK/FAIL per replacement so you know exactly what landed. Delete the helper 
 User has a `Bash` permission rule allowing `python -m http.server 8765 --bind 127.0.0.1` in background. Standard verify flow:
 
 1. `python -m http.server 8765 --bind 127.0.0.1` (background)
-2. `mcp__playwright__browser_navigate` to `http://127.0.0.1:8765/Golf%20Profile.html`
+2. `mcp__playwright__browser_navigate` to `http://127.0.0.1:8765/`
 3. `browser_evaluate` for state inspection, `browser_click` for interactions, `browser_take_screenshot` for visuals
 4. `browser_close` + `Stop-Process` to free port 8765
 5. `rm -rf .playwright-mcp` and any saved screenshots — keep project root clean
