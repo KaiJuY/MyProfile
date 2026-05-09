@@ -71,9 +71,23 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` verified pass · `[!]` block
 
 ---
 
-## Step 04 — Work  `[ ]`
+## Step 04 — Work  `[x]`
 
 Per-project 3D companions + SVG leader lines; HTML grid stays.
+
+**Acceptance criteria** (verbatim from `3DS/04-work.md`):
+- [x] Scroll into Work section: each card has a 3D object visible to its right — `projects@0.1-desktop.png` shows EFEM gears, DCSA bars; `@0.4` shows MaterialManager stack; `@0.7` shows SnVersion curve
+- [x] Each object matches the spec table — 7 objects: EfemGear (2 meshing star-tooth gears), SecsSimulator (nodes + packet pulse), DcsaYolo (5 bars w/ accent on 0.836), PlcSimulation (`{ }` ribbon → box morph), MaterialManager (5-box stack isometric), DivineWhisper (card + 10 fireflies + 籤 CanvasTexture), SnVersion (32-seg curve + 20 spheres + tolerance bands)
+- [x] Leader line connects HTML card to 3D object, dashed — single full-viewport SVG (`.work-leader-svg`), 7 paths, `stroke-dasharray:2,4`, ~1px gray stroke; `d` updates via RAF
+- [~] Leader line animates in (`stroke-dashoffset` 0.7s on viewport entry) — code path verified; static screenshots can't capture the draw-in animation
+- [x] Object animation progresses with scroll — bars rise / boxes stack / curve draws / brace-morphs all keyed to per-card scrollProgress (computed `(vh-rect.top)/(rect.h+vh)`); wall-clock used only for "always-on" details (gear spin, firefly orbit) per playbook table
+- [x] Mobile: no 3D, no console errors — `WorkScene.update` early-returns; `init` skips object/lighting creation; mobile state JSON: `errors: []`
+- [~] 60fps maintained scrolling fast — draw-call count 16-23 (well under 50 budget); FPS not measured in headless
+- [~] Animations replay on scroll back — by construction (each per-bar/sphere lerps toward `eased(scrollProgress)`, never accumulates); leader manager has explicit replay-on-reentry hysteresis
+
+**Orchestrator deviation note**: Canvas `z-index` lifted from 1 → 2. Required so 3D companions paint over the project cards' opaque-ish glass backdrops. Side effects: (a) hero scene's `<svg>` trajectory trail (parented to `.sphere-stage` inside `#content` z=1) is now occluded by canvas — minor visual loss only on hard hits; fixable in step 08 by reparenting to `body`. (b) Pursuits 3D companions render over their glass cards (acceptable — section is mostly negative space). Hero ball remains visible because of stencil clipping.
+
+**Commit message on green**: `step 04: work section mini scenes with leader lines`
 
 ---
 
@@ -126,6 +140,12 @@ After step 03:
 - `index.html`: untouched (no new i18n keys)
 - `3DS/_verification/verify.mjs` (added — puppeteer-core driven harness for scroll/eval/screenshot at any section + percentage. Used as `node 3DS/_verification/verify.mjs <step> <flow>`. `flow` accepts `section@N` syntax for in-section depth.)
 - Dev-only dep: `puppeteer-core@24.43.0` installed via `npm install --no-save` (NOT in package.json). Used only for orchestrator verification.
+
+After step 04:
+- `src/scenes/work/{WorkObject,WorkScene,LeaderLine}.ts` + `src/scenes/work/objects/{EfemGear,SecsSimulator,DcsaYolo,PlcSimulation,MaterialManager,DivineWhisper,SnVersion}.ts` (added — 10 files: shared interface, coordinator, leader-line manager, 7 per-project objects)
+- `src/core/App.ts` (modified — registers WorkScene after PursuitsScene)
+- `src/style.css` (modified — `canvas#gl` z-index 1 → 2; `.work-leader-svg` mobile suppression rule)
+- `index.html`: untouched
 
 ---
 

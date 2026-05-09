@@ -18,7 +18,14 @@ canvas#gl {
   inset: 0;
   width: 100vw;
   height: 100vh;
-  z-index: 1;
+  /* z=2 puts the WebGL canvas ABOVE #content (which is z=1). This is required
+   * for the Work section's per-project 3D companions to be visible — the
+   * project cards have opaque-ish backdrop-filter backgrounds; if 3D draws
+   * behind them it disappears. Hero's ball is stencil-clipped so it doesn't
+   * bleed across the hero text. Pursuits frames live in a section with mostly
+   * negative space (cards are small floating tiles) so painting over the gap
+   * is fine. Nav (z=50) still sits above the canvas. */
+  z-index: 2;
   pointer-events: none;
   display: block;
 }
@@ -73,3 +80,17 @@ body {
 
 /* SVG trajectory trail injected by HeroScene (.hero-trail-svg) — no rules
  * needed here; HeroScene styles inline. Listed for grep visibility. */
+
+/* Step 04 — Work section leader-line overlay.
+ *
+ * Created by LeaderLineManager on init; full-viewport fixed SVG that draws a
+ * dashed connector from each project card's right edge to its 3D companion.
+ * Inline styles cover layout; this rule is additive (mobile suppression so
+ * the overlay never paints on phones, where there's no 3D companion). */
+.work-leader-svg {
+  /* Default state set inline by LeaderLineManager; nothing to add desktop-side. */
+}
+@media (max-width: 767px), (pointer: coarse) {
+  .work-leader-svg { display: none !important; }
+}
+

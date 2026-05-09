@@ -6,6 +6,7 @@ import { ScrollManager } from './ScrollManager';
 import { SceneManager } from '@scenes/SceneManager';
 import { HeroScene } from '@scenes/HeroScene';
 import { PursuitsScene } from '@scenes/pursuits/PursuitsScene';
+import { WorkScene } from '@scenes/work/WorkScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 
@@ -64,6 +65,13 @@ export class App {
     // the existing flythrough section, with vertex-shader morph transitions.
     await this.sceneManager.register(
       new PursuitsScene(this.camera.three, this.scrollManager)
+    );
+
+    // Step 04: Work — per-project 3D companion objects + dashed SVG leader
+    // lines. Mobile bails early inside WorkScene.update(). Each project card
+    // in #projects gets one anchor object on the right side.
+    await this.sceneManager.register(
+      new WorkScene(this.camera.three)
     );
 
     // Begin RAF
