@@ -1,0 +1,25 @@
+{
+  "name": "profile-3ds",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "gsap": "^3.12.5",
+    "lenis": "^1.1.13",
+    "postprocessing": "^6.36.4",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "@types/three": "^0.169.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

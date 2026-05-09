@@ -1,0 +1,42 @@
+/*
+ * Three.js overlay-only styles.
+ * The existing site's typography, layout, and colors live in the inline <style>
+ * block of index.html — we DO NOT touch those. This file only owns the canvas
+ * stacking + content overlay positioning + body transparency so the canvas
+ * shows through.
+ */
+
+/* The full-screen WebGL canvas sits behind the HTML content overlay but ABOVE
+ * the existing `.scene` cinematic-gradient div. Stacking order (back → front):
+ *   .scene (z-index 0) → canvas#gl (z-index 1, same as main but earlier in DOM)
+ *   → main#content (z-index 1, later in DOM, paints above canvas)
+ *   → nav (z-index 50)
+ * This way the cube renders on top of the dark gradient backdrop (visible) but
+ * still behind all the DOM text/cards (so HTML stays readable). */
+canvas#gl {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+  display: block;
+}
+
+/* Make body transparent so the canvas paints through.
+ * The existing inline rule sets `body { background: var(--bg); }` — we override
+ * here. The `.scene` div (z-index: 0) still paints the cinematic gradient on top
+ * of the canvas. */
+html,
+body {
+  background: transparent !important;
+}
+
+/* Content wrapper. The existing <main> tag now has id="content" — its CSS
+ * (z-index: 1, position: relative) is already declared in the inline stylesheet
+ * keyed off `main { ... }`. We add a guard rule so any direct query selector
+ * `#content` works too. */
+#content {
+  position: relative;
+  z-index: 1;
+}

@@ -677,6 +677,13 @@
 </head>
 <body>
 
+<!-- Three.js full-screen canvas. Inserted by step 01 of the 3DS upgrade.
+     z-index handled in src/style.css; pointer-events: none so the existing
+     site stays clickable. -->
+<canvas id="gl"></canvas>
+
+<!-- Existing site content. The inline CSS already styles `main { z-index: 1 }`,
+     and we add an id="content" so the new src/style.css can target it too. -->
 <div class="scene">
   <div class="stars"></div>
   <div class="grid-floor"></div>
@@ -705,7 +712,7 @@
   </div>
 </nav>
 
-<main>
+<main id="content">
 
 <!-- HERO -->
 <section class="hero" id="hero">
@@ -1774,6 +1781,9 @@
   }
   ReactDOM.createRoot(document.getElementById('tweaks-root')).render(<TweaksApp />);
 </script>
+
+<!-- Three.js entry. Vite serves this in dev and bundles it for prod. -->
+<script type="module" src="/src/main.ts"></script>
 
 </body>
 </html>
