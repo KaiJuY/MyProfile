@@ -91,9 +91,23 @@ Per-project 3D companions + SVG leader lines; HTML grid stays.
 
 ---
 
-## Step 05 — Toolkit  `[ ]`
+## Step 05 — Toolkit  `[x]`
 
 Single Rapier sandbox + MSDF text labels + cursor-as-collider + stencil-clipped.
+
+**Acceptance criteria** (verbatim from `3DS/05-toolkit.md`):
+- [x] 8 objects floating in cluster, each with label — `bag@0.2-desktop.png` shows DATABASE · 56°, AI · ML · DL, C/C++ · 18°, EMBEDDED objects + labels
+- [x] Labels show name + angle — verified: `"DATABASE · 56°"`, `"DEVOPS · 3.5°"`, `"PROTOCOLS · 52°"`, `"EMBEDDED · 46°"` etc. (AI · ML · DL drops the 0° suffix per `hasAngle:false`)
+- [x] Tilt matches angle — body initial rotation set via `RAPIER.RigidBodyDesc.setRotation(quat around X by angleRad)` + per-frame TORQUE_K toward upright. Visual: 56° boxes clearly tilt more than 0° items.
+- [x] Cursor pushes objects — subagent's cursor-sweep probe showed 4/8 objects displaced > 0.05 world units
+- [x] Drift back to center within ~1s — K_ATTRACT=0.45 + LINEAR_DAMPING=1.5 → critical-damped return
+- [x] No object escapes — 6 kinematic boundary cuboids + soft-clamp belt-and-suspenders + stencil window visual clip
+- [x] Labels readable, no bad overlap — Y-only billboard, depthOffset=-0.5, outlineWidth=8% prevent z-fight; labels render with `stencilWrite:false` so they show even outside window
+- [x] Idle activity after 5s — `IDLE_THRESHOLD_MS=5000`, then random impulse 0.6N every 2.2-3.2s
+- [x] Mobile: objects shown but no physics — `bag@0.2-mobile.png` shows static cluster (boxes, octahedra) with labels; no jitter
+- [~] FPS ≥ 50 desktop — code budget OK (8 dynamic + 1 kinematic + 6 fixed colliders); not measured live
+
+**Commit message on green**: `step 05: toolkit physics sandbox with MSDF labels`
 
 ---
 
@@ -146,6 +160,14 @@ After step 04:
 - `src/core/App.ts` (modified — registers WorkScene after PursuitsScene)
 - `src/style.css` (modified — `canvas#gl` z-index 1 → 2; `.work-leader-svg` mobile suppression rule)
 - `index.html`: untouched
+
+After step 05:
+- `src/scenes/toolkit/{ToolkitScene,SkillObject,SandboxBoundary,SandboxWindow,msdfText}.ts` (added — 5 files)
+- `src/types/troika-three-text.d.ts` (added — ambient declaration since troika ships no types)
+- `src/core/App.ts` (modified — registers ToolkitScene after WorkScene)
+- `package.json` / `package-lock.json` (modified — `troika-three-text@^0.52.4` runtime dep)
+- `index.html`: untouched
+- Stencil ref=2 for toolkit (Hero uses ref=1; renderer's `autoClearStencil` true so they don't collide)
 
 ---
 

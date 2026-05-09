@@ -14,7 +14,8 @@
     "gsap": "^3.12.5",
     "lenis": "^1.1.13",
     "postprocessing": "^6.36.4",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "troika-three-text": "^0.52.4"
   },
   "devDependencies": {
     "@types/node": "^25.6.2",

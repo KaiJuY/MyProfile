@@ -7,6 +7,7 @@ import { SceneManager } from '@scenes/SceneManager';
 import { HeroScene } from '@scenes/HeroScene';
 import { PursuitsScene } from '@scenes/pursuits/PursuitsScene';
 import { WorkScene } from '@scenes/work/WorkScene';
+import { ToolkitScene } from '@scenes/toolkit/ToolkitScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 
@@ -72,6 +73,14 @@ export class App {
     // in #projects gets one anchor object on the right side.
     await this.sceneManager.register(
       new WorkScene(this.camera.three)
+    );
+
+    // Step 05: Toolkit — Rapier physics sandbox anchored to section#bag.
+    // Uses stencil ref=2 (HeroScene uses ref=1; autoClearStencil resets each
+    // frame so they coexist). 8 skill objects float, magnetically cluster,
+    // get pushed away from cursor. Mobile: fixed grid + slow rotation only.
+    await this.sceneManager.register(
+      new ToolkitScene(this.camera.three, this.physics)
     );
 
     // Begin RAF
