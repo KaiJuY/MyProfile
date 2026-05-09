@@ -5,6 +5,7 @@ import { WindowResizeBroadcaster } from './ResizeObserver';
 import { ScrollManager } from './ScrollManager';
 import { SceneManager } from '@scenes/SceneManager';
 import { HeroScene } from '@scenes/HeroScene';
+import { PursuitsScene } from '@scenes/pursuits/PursuitsScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 
@@ -57,6 +58,12 @@ export class App {
     // (3D golf ball + Rapier physics + stencil-clipped viewing window).
     await this.sceneManager.register(
       new HeroScene(this.camera.three, this.physics, this.renderer.three.domElement)
+    );
+
+    // Step 03: Pursuits — 4 sub-frames anchored to .glass-card[data-card] in
+    // the existing flythrough section, with vertex-shader morph transitions.
+    await this.sceneManager.register(
+      new PursuitsScene(this.camera.three, this.scrollManager)
     );
 
     // Begin RAF
