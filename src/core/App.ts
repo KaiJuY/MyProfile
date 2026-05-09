@@ -9,6 +9,7 @@ import { PursuitsScene } from '@scenes/pursuits/PursuitsScene';
 import { WorkScene } from '@scenes/work/WorkScene';
 import { ToolkitScene } from '@scenes/toolkit/ToolkitScene';
 import { TrajectoryScene } from '@scenes/trajectory/TrajectoryScene';
+import { ContactScene } from '@scenes/contact/ContactScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 
@@ -91,6 +92,18 @@ export class App {
     // (full-viewport — no clip needed).
     await this.sceneManager.register(
       new TrajectoryScene(this.camera.three, this.scrollManager)
+    );
+
+    // Step 07: Contact — finale "ball drops into the hole" animation. Mounts
+    // a green surface + cup + reused golf ball below the camera default
+    // position, tilts the camera into a "putting view" angle while the user
+    // is in #contact, plays a hybrid physics + GSAP timeline (kinematic
+    // fall → dynamic roll → kinematic drop-in), then fades in the contact
+    // links and footer. Replays (faster) on scroll-out-and-back-in. Mobile
+    // skips physics (straight-drop tween). Registered AFTER TrajectoryScene
+    // so its camera writes win in the per-frame iteration order.
+    await this.sceneManager.register(
+      new ContactScene(this.camera.three, this.scrollManager, this.physics)
     );
 
     // Begin RAF

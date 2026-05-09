@@ -4,6 +4,7 @@ import type { SceneModule } from './SceneManager';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import { damp, lerp, clamp } from '@utils/lerp';
+import { buildDimpleNormalMap, buildGolfBallMaterial } from './shared/golfBall';
 
 /**
  * HeroScene — Lusion-style 3D golf ball with Rapier physics, mouse-as-club
@@ -81,221 +82,6 @@ const isMobile =
   (window.innerWidth < 768 ||
     (typeof window.matchMedia === 'function' &&
       window.matchMedia('(pointer: coarse)').matches));
-
-// -----------------------------------------------------------------------------
-// Procedural dimple normal map
-// -----------------------------------------------------------------------------
-
-/**
- * Build a 512×512 RGBA normal map with ~250 dimples laid out in a Fibonacci
- * lattice across the UV plane (which on a sphere mapping approximates an even
- * spread of points without UV-pole singularities).
- *
- * Encoding: pixel rgb = (nx*0.5+0.5, ny*0.5+0.5, nz*0.5+0.5). Flat surface =
- * (128,128,255). Each dimple is a small *depression* — at the dimple center
- * the surface is pushed inward, so the local normal still points roughly outward
- * (positive nz) but the gradient around the rim of the dimple has nx/ny pointing
- * radially OUT of the dimple center (so light grazing across the surface catches
- * the dimple rims and shadows the wells — the classic dimple look).
- *
- * Mathematically: we approximate a spherical-cap depression via a smooth radial
- * profile h(r) = -depth * smoothstep_pulse(r/R), then take its gradient (∇h)
- * and convert to a tangent-space normal by (-dh/du, -dh/dv, 1) / |...|. The
- * "outward at center" appearance comes from the smoothstep profile having zero
- * gradient at r=0 (the bottom of the well) — so the normal there is exactly
- * (0,0,1) (flat-up), and the gradient peaks at the rim where the dimple meets
- * the surface.
- */
-function buildDimpleNormalMap(
-  size: number = 512,
-  dimpleCount: number = 250,
-  dimpleRadiusPx: number = 14,
-  dimpleDepth: number = 0.55
-): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('HeroScene: failed to acquire 2D context for dimple map');
-  }
-
-  const img = ctx.createImageData(size, size);
-  const data = img.data;
-
-  // Fill with flat-up normal (0,0,1) → encoded (128,128,255).
-  for (let i = 0; i < data.length; i += 4) {
-    data[i] = 128;
-    data[i + 1] = 128;
-    data[i + 2] = 255;
-    data[i + 3] = 255;
-  }
-
-  // Fibonacci lattice in [0,1)^2 — gives a ~uniform spread without lattice bands.
-  // Reference: golden-ratio-based low-discrepancy sequence.
-  const PHI = (1 + Math.sqrt(5)) / 2;
-  const dimples: { cx: number; cy: number }[] = [];
-  for (let i = 0; i < dimpleCount; i++) {
-    const u = (i / PHI) % 1;
-    const v = (i + 0.5) / dimpleCount;
-    dimples.push({ cx: u * size, cy: v * size });
-  }
-
-  // Radial profile pulse: smoothstep peak at rim. h(r) ≈ depth * f(r/R) where
-  // f(0)=0, f(0.5)=1 (max), f(1)=0. We rasterize the gradient (-dh/du,-dh/dv).
-  // Because we want a *depression*, set sign to + here (outward normal at rim).
-  // For pixel-space gradient, we approximate via central differences across a
-  // 3x3 neighbourhood — but it's cleaner to write the closed-form derivative:
-  // f(t) = 4t(1-t)  (quadratic bump, peaking at t=0.5)
-  // df/dt = 4 - 8t
-  // dt/dr = 1/R, dh/dr = depth * df/dt * (1/R)
-  // The 2D gradient is (dh/dr) * (dx/r, dy/r).
-  const R = dimpleRadiusPx;
-
-  for (const { cx, cy } of dimples) {
-    const minX = Math.max(0, Math.floor(cx - R));
-    const maxX = Math.min(size - 1, Math.ceil(cx + R));
-    const minY = Math.max(0, Math.floor(cy - R));
-    const maxY = Math.min(size - 1, Math.ceil(cy + R));
-
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        // Wrap-aware distance: if a dimple sits near a UV seam we want it to
-        // tile, but for this single ball it doesn't matter — we use straight
-        // Euclidean distance; seams are hidden under the ball mark anyway.
-        const dx = x - cx;
-        const dy = y - cy;
-        const r = Math.sqrt(dx * dx + dy * dy);
-        if (r > R) continue;
-        const t = r / R; // 0..1
-        // Gradient magnitude of f(t)=4t(1-t): df/dt = 4 - 8t
-        // dh/dr = depth * (4 - 8t) / R, but we want an INWARD dent so sign-flip:
-        const dhdr = -dimpleDepth * (4 - 8 * t) / R;
-        // Direction (dx/r, dy/r) — at r=0, gradient is 0 anyway, so guard.
-        const inv_r = r > 1e-4 ? 1 / r : 0;
-        const gx = dhdr * dx * inv_r;
-        const gy = dhdr * dy * inv_r;
-
-        // Tangent-space normal of a height-field: n = normalize(-gx, -gy, 1)
-        const nx = -gx;
-        const ny = -gy;
-        const nz = 1;
-        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-        const nnx = nx / len;
-        const nny = ny / len;
-        const nnz = nz / len;
-
-        // Composite onto whatever was there (later dimples override earlier;
-        // dimples don't overlap much given Fibonacci spread + small R).
-        const idx = (y * size + x) * 4;
-        // Encode signed normal → unsigned 0..255
-        data[idx] = Math.round((nnx * 0.5 + 0.5) * 255);
-        data[idx + 1] = Math.round((nny * 0.5 + 0.5) * 255);
-        data[idx + 2] = Math.round((nnz * 0.5 + 0.5) * 255);
-        data[idx + 3] = 255;
-      }
-    }
-  }
-
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.NoColorSpace; // normal maps are linear data, not sRGB
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// -----------------------------------------------------------------------------
-// Custom ShaderMaterial (matcap + dimple normal + fresnel rim)
-// -----------------------------------------------------------------------------
-
-const VERT = /* glsl */ `
-  // Pass-throughs we want in the fragment for matcap UV + fresnel.
-  varying vec3 vViewNormal;     // normal in view space (camera-relative)
-  varying vec3 vViewPosition;   // fragment position in view space
-  varying vec2 vUv;             // unwrapped uv (we use spherical projection from normal below
-                                //   instead of geometry uv to avoid pole stretch on seam)
-
-  void main() {
-    // Standard MVP transform.
-    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-    gl_Position = projectionMatrix * mvPos;
-
-    // Normal into view space. normalMatrix is the inverse-transpose of the
-    // upper-3x3 of modelViewMatrix — handles non-uniform scale correctly.
-    vViewNormal = normalize(normalMatrix * normal);
-
-    // viewPosition for the fresnel term (negate because three convention has
-    // +z toward camera in eye-space and we want the vector FROM the fragment
-    // TO the camera).
-    vViewPosition = -mvPos.xyz;
-
-    // Spherical UV from object-space normal — this avoids the seam stretch you
-    // get with SphereGeometry's built-in UV at the poles. Atan2 of (z,x) maps
-    // longitude to [-π,π], asin(y) maps latitude to [-π/2,π/2]. We rescale
-    // and tile so the dimple texture repeats nicely.
-    vec3 n = normalize(position);
-    float u = atan(n.z, n.x) / 6.2831853 + 0.5;
-    float v = asin(n.y) / 3.1415926 + 0.5;
-    vUv = vec2(u * 4.0, v * 2.0); // 4× repeat lon, 2× lat — packs more dimples
-  }
-`;
-
-const FRAG = /* glsl */ `
-  precision highp float;
-
-  uniform sampler2D uMatcap;
-  uniform sampler2D uDimple;
-  uniform float     uRimStrength;    // 0..1, how strong the cool-edge fresnel is
-  uniform vec3      uRimColor;       // RGB tint of the rim
-  uniform float     uDimpleStrength; // 0..1, how much the dimple normal perturbs
-
-  varying vec3 vViewNormal;
-  varying vec3 vViewPosition;
-  varying vec2 vUv;
-
-  // Decode tangent-space normal from RGB (0..1) to (-1..1).
-  vec3 unpackNormal(vec3 rgb) {
-    return normalize(rgb * 2.0 - 1.0);
-  }
-
-  void main() {
-    // Sample the procedural dimple normal in tangent space.
-    vec3 nT = unpackNormal(texture2D(uDimple, vUv).rgb);
-
-    // Cheap "approximate TBN" — for a sphere we don't need rigorous tangents
-    // because the matcap UV trick (encoding view-space normal into a 2D LUT)
-    // doesn't care about handedness. We just perturb the view-space normal
-    // toward (nT.x, nT.y) by uDimpleStrength. This works because the matcap
-    // is rotation-invariant around its center, so any perturbation that bends
-    // the normal away from the camera-axis cleanly samples a different matcap
-    // pixel — which is exactly the lighting effect we want.
-    vec3 n = normalize(vViewNormal + vec3(nT.x, nT.y, 0.0) * uDimpleStrength);
-
-    // Standard matcap UV: take view-space normal's xy, scale to [0,1] LUT space.
-    // Three.js MeshMatcapMaterial uses the same formula.
-    vec2 matcapUv = n.xy * 0.5 + 0.5;
-    vec3 matcap = texture2D(uMatcap, matcapUv).rgb;
-
-    // Fresnel: angle between view direction and surface normal. At grazing
-    // angles (edge of sphere) this approaches 1; head-on it's 0. Power 3 is
-    // a tight rim — the playbook calls for "subtle".
-    vec3 viewDir = normalize(vViewPosition);
-    float fresnel = pow(1.0 - max(dot(viewDir, n), 0.0), 3.0);
-    vec3 rim = uRimColor * fresnel * uRimStrength;
-
-    // Compose. Matcap already encodes the lighting we want; fresnel adds a
-    // subtle cool edge separation against the dark hero background.
-    vec3 col = matcap + rim;
-
-    gl_FragColor = vec4(col, 1.0);
-
-    // Tone-mapping is applied by the renderer (ACESFilmic), and output is
-    // sRGB-converted automatically because outputColorSpace is sRGB. We output
-    // linear here so the pipeline does the right thing.
-  }
-`;
 
 // -----------------------------------------------------------------------------
 // Rounded-rect mask geometry
@@ -452,18 +238,12 @@ export class HeroScene implements SceneModule {
     this.matcapTex.magFilter = THREE.LinearFilter;
     this.matcapTex.generateMipmaps = true;
 
-    // 5. Ball mesh + custom shader.
+    // 5. Ball mesh + custom shader (shared with ContactScene via golfBall.ts).
     const geom = new THREE.SphereGeometry(BALL_RADIUS, 64, 64);
-    this.ballMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        uMatcap: { value: this.matcapTex },
-        uDimple: { value: this.dimpleTex },
-        uRimStrength: { value: 0.35 }, // subtle, matches "monochrome restraint"
-        uRimColor: { value: new THREE.Color(0x9ec3d6) }, // cool-blue rim, very faint
-        uDimpleStrength: { value: 0.55 }, // visible dimples but not noisy
-      },
-      vertexShader: VERT,
-      fragmentShader: FRAG,
+    this.ballMaterial = buildGolfBallMaterial(this.matcapTex, this.dimpleTex, {
+      rimStrength: 0.35,                       // subtle, matches "monochrome restraint"
+      rimColor: new THREE.Color(0x9ec3d6),     // cool-blue rim, very faint
+      dimpleStrength: 0.55,                    // visible dimples but not noisy
     });
 
     // Stencil setup (technique #4): ball draws ONLY where mask wrote ref=1.

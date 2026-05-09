@@ -140,9 +140,27 @@ Camera flythrough along CatmullRomCurve3 + HTML milestone fades + HUD readout. (
 
 ---
 
-## Step 07 — Contact  `[ ]`
+## Step 07 — Contact  `[x]`
 
-Ball drops into hole; footer fades after.
+Ball drops into hole; footer fades after. Hybrid GSAP+Rapier per playbook footer recommendation.
+
+**Acceptance criteria** (verbatim from `3DS/07-contact.md`):
+- [x] Animation triggers on scroll into Contact — `sectionProgress("contact") > 0.05` fires timeline
+- [x] Ball falls/lands/rolls/teeters/drops — 4-phase timeline: kinematic side-arc fall (0.0–0.6s) → dynamic Rapier roll w/ angular impulse (0.6–1.5s) → kinematic teeter w/ sinusoidal y-wobble (1.5–1.8s) → drop+fade (1.8–2.2s). `contact-desktop.png` shows ball mid-roll toward visible hole rim.
+- [x] Camera shake / rim flash subtle — shake amplitude 0.005 rad over 0.4s linear decay, rim glow 0 → 0.6 → 0
+- [x] Contact info + footer fade in AFTER ball in hole — `scheduleFadeIn` at `phaseDropEnd`. Subagent probe at 3.5s confirmed all targets opacity 1
+- [x] Footer "LIVE" subtle pulse — runtime-injected `@keyframes contact-live-pulse` (1.0↔1.04, 1.6s ease-in-out infinite) on wrapped `<span class="contact-live">`
+- [x] Replay (faster) — `hasPlayed` flag; on scroll-out `resetForReplay()` snaps ball back kinematic; re-entering uses `REPLAY_TOTAL_S=1.5s` vs `FIRST_PLAY_TOTAL_S=2.2s`
+- [x] mailto/tel/github links remain clickable — ContactScene only writes opacity/transform/will-change, never pointer-events. Canvas pointer-events: none preserved
+- [x] Mobile simplified drop — `isMobile` builds dedicated GSAP timeline with no physics, single straight-down y tween, fade-in still scheduled at total*0.85
+
+**Refactor note**: Hero's golf-ball helper extracted to `src/scenes/shared/golfBall.ts` (`buildDimpleNormalMap`, `buildGolfBallMaterial`, `buildGolfBallMesh`, `GOLF_BALL_VERT/FRAG`). HeroScene now imports — behavior unchanged (uOpacity defaults 1.0). ContactScene imports same helper for visual continuity.
+
+**Open issues** (deferred to step 08):
+- LIVE-pulse `<span>` wrapping is one-shot; if user toggles language, the existing `applyLang()` `innerHTML` swap blows it away. Step 08's i18n review can fix via MutationObserver.
+- TrajectoryScene's HUD remains in DOM at opacity 0 even after exiting career section — visible faintly when contact starts. Step 08 polish.
+
+**Commit message on green**: `step 07: contact finale with ball drop animation`
 
 ---
 
@@ -197,6 +215,13 @@ After step 06:
 - `src/core/App.ts` (modified — registers TrajectoryScene after ToolkitScene)
 - `index.html`: untouched (HUD is DOM-injected by `HUD.ts` into body)
 - No new deps (Theatre.js intentionally skipped per playbook §3)
+
+After step 07:
+- `src/scenes/shared/golfBall.ts` (added — extracted Hero's dimple-map builder + ShaderMaterial + VERT/FRAG, plus `uOpacity` uniform for Contact's fade)
+- `src/scenes/contact/{ContactScene,Hole,GreenSurface}.ts` (added — 3 files)
+- `src/scenes/HeroScene.ts` (modified — imports from shared/golfBall.ts; behavior unchanged, just refactored)
+- `src/core/App.ts` (modified — registers ContactScene LAST so its camera writes win over Trajectory's reset-to-default)
+- `index.html`: untouched (LIVE-pulse `<span>` wrap done at runtime; @keyframes injected via runtime `<style>`)
 
 ---
 
