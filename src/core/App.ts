@@ -12,17 +12,26 @@ import { TrajectoryScene } from '@scenes/trajectory/TrajectoryScene';
 import { ContactScene } from '@scenes/contact/ContactScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
+import { getUserPrefs, type UserPrefs } from './UserPrefs';
+import { Loader } from './Loader';
+import { Postprocessing } from './Postprocessing';
+import { FPSCounter } from './FPSCounter';
 
 /**
  * The application root. Owns the renderer, camera, scenes, scroll, physics, and
  * the RAF loop. One instance per page; exposed as window.app in dev for
  * orchestrator verification (window.scrollManager etc).
  *
- * Boot sequence:
- *  1. Construct subsystems synchronously (renderer, camera, scenes, scroll)
- *  2. Wait for Rapier WASM to init (async)
- *  3. Register scene modules
- *  4. Start RAF
+ * Boot sequence (post step 08 — Loader gate):
+ *  1. detect prefs (mobile / reduced-motion / debug / nogate / quality override)
+ *  2. mount Loader overlay synchronously
+ *  3. construct subsystems (renderer + camera) — flips loader.markDone('webgl')
+ *  4. wait for matcap PNG to load (mark 'matcap')
+ *  5. await Rapier WASM (mark 'physics')
+ *  6. register scenes (tick 'scenes' per registration)
+ *  7. compile shaders via Postprocessing.warmShaders (mark 'shaders')
+ *  8. wait for user click (or auto-dismiss in nogate mode)
+ *  9. start RAF render loop (with composer)
  */
 export class App {
   readonly resize: WindowResizeBroadcaster;
@@ -32,88 +41,130 @@ export class App {
   readonly scrollManager: ScrollManager;
   readonly sceneManager: SceneManager;
   readonly physics: PhysicsWorld;
+  readonly userPrefs: UserPrefs;
+  readonly loader: Loader;
+  readonly postprocessing: Postprocessing;
+  readonly fpsCounter: FPSCounter | null;
+
+  qualityLevel: 'high' | 'medium' | 'low' = 'low';
+
   private rafHandle: number = -1;
   private running: boolean = false;
 
   constructor(canvas: HTMLCanvasElement) {
+    this.userPrefs = getUserPrefs();
+    this.loader = new Loader(this.userPrefs.noGate);
+    this.loader.mount();
+
     this.resize = new WindowResizeBroadcaster();
     const initialSize = this.resize.getSize();
     this.renderer = new Renderer(canvas);
     this.renderer.resize(initialSize);
+    // WebGL context just constructed — flip the first loader chip immediately.
+    this.loader.markDone('webgl');
+
     this.camera = new Camera(initialSize);
     this.clock = new Clock();
     this.scrollManager = new ScrollManager();
     this.sceneManager = new SceneManager();
     this.physics = new PhysicsWorld();
 
-    // Wire resize → renderer + camera. Single subscriber, two callees.
+    // Postprocessing wraps the renderer + scene + camera. We construct here
+    // (cheap — composer is built lazily inside) so resize-broadcast can target it.
+    this.postprocessing = new Postprocessing(
+      this.renderer.three,
+      this.sceneManager.scene,
+      this.camera.three,
+      this.userPrefs
+    );
+
+    this.fpsCounter = this.userPrefs.debug ? new FPSCounter() : null;
+
+    // Wire resize → renderer + camera + composer.
     this.resize.subscribe((size) => {
       this.renderer.resize(size);
       this.camera.resize(size);
+      this.postprocessing.resize(size);
     });
+
+    // Pre-load the matcap PNG so the loader can flip 'matcap' early. The
+    // HeroScene + ContactScene each call their own TextureLoader.load() which
+    // re-reads from cache — this fetch is just for loader feedback.
+    this.preloadMatcap();
+  }
+
+  private preloadMatcap(): void {
+    // Use Image() rather than THREE.TextureLoader so we can listen to onload
+    // without binding a Three texture lifecycle to the loader.
+    const img = new Image();
+    img.onload = () => this.loader.markDone('matcap');
+    img.onerror = () => this.loader.markDone('matcap'); // don't hang on 404
+    img.src = '/textures/matcap-pearl.png';
+    // If the browser already had it cached (HMR reload), `complete` may be true
+    // before the listener is attached. Guard:
+    if (img.complete && img.naturalWidth > 0) {
+      this.loader.markDone('matcap');
+    }
   }
 
   async start(): Promise<void> {
-    // Init Rapier first — physics needs to be ready before any scene module that
-    // adds bodies. Step 01 has no bodies, but the discipline is set here.
+    // 1. Init Rapier first — physics needs to be ready before any scene module
+    //    that adds bodies.
     await this.physics.init();
+    this.loader.markDone('physics');
 
-    // Register scene modules. Step 02 replaces TestCube with HeroScene
-    // (3D golf ball + Rapier physics + stencil-clipped viewing window).
+    // 2. Register scenes — tick the BUILD SCENES weighted bar per scene.
     await this.sceneManager.register(
       new HeroScene(this.camera.three, this.physics, this.renderer.three.domElement)
     );
+    this.loader.tick('scenes');
 
-    // Step 03: Pursuits — 4 sub-frames anchored to .glass-card[data-card] in
-    // the existing flythrough section, with vertex-shader morph transitions.
     await this.sceneManager.register(
       new PursuitsScene(this.camera.three, this.scrollManager)
     );
+    this.loader.tick('scenes');
 
-    // Step 04: Work — per-project 3D companion objects + dashed SVG leader
-    // lines. Mobile bails early inside WorkScene.update(). Each project card
-    // in #projects gets one anchor object on the right side.
-    await this.sceneManager.register(
-      new WorkScene(this.camera.three)
-    );
+    await this.sceneManager.register(new WorkScene(this.camera.three));
+    this.loader.tick('scenes');
 
-    // Step 05: Toolkit — Rapier physics sandbox anchored to section#bag.
-    // Uses stencil ref=2 (HeroScene uses ref=1; autoClearStencil resets each
-    // frame so they coexist). 8 skill objects float, magnetically cluster,
-    // get pushed away from cursor. Mobile: fixed grid + slow rotation only.
-    await this.sceneManager.register(
-      new ToolkitScene(this.camera.three, this.physics)
-    );
+    await this.sceneManager.register(new ToolkitScene(this.camera.three, this.physics));
+    this.loader.tick('scenes');
 
-    // Step 06: Trajectory — camera flies along a 3D path through the career
-    // section. Owns the SHARED main camera while inside section#career and
-    // restores it to default (0,0,5) → origin when leaving. Markers + grid
-    // floor render in 3D; HUD is a fixed-position HTML overlay. No stencil
-    // (full-viewport — no clip needed).
     await this.sceneManager.register(
       new TrajectoryScene(this.camera.three, this.scrollManager)
     );
+    this.loader.tick('scenes');
 
-    // Step 07: Contact — finale "ball drops into the hole" animation. Mounts
-    // a green surface + cup + reused golf ball below the camera default
-    // position, tilts the camera into a "putting view" angle while the user
-    // is in #contact, plays a hybrid physics + GSAP timeline (kinematic
-    // fall → dynamic roll → kinematic drop-in), then fades in the contact
-    // links and footer. Replays (faster) on scroll-out-and-back-in. Mobile
-    // skips physics (straight-drop tween). Registered AFTER TrajectoryScene
-    // so its camera writes win in the per-frame iteration order.
     await this.sceneManager.register(
       new ContactScene(this.camera.three, this.scrollManager, this.physics)
     );
+    this.loader.tick('scenes');
 
-    // Begin RAF
+    // 3. Initialize postprocessing pipeline now that scenes are registered.
+    this.postprocessing.init();
+    this.qualityLevel = this.postprocessing.getQuality();
+
+    // 4. Force one off-screen compile of every scene material so the first
+    //    visible frame doesn't stutter on shader-program upload.
+    this.postprocessing.warmShaders();
+    this.loader.markDone('shaders');
+
+    // 5. Mount FPS counter if ?debug=1.
+    if (this.fpsCounter) this.fpsCounter.mount();
+
+    // 6. Wait for user click (or auto-dismiss in nogate mode).
+    await this.loader.whenDismissed();
+
+    // 7. Begin RAF.
     this.running = true;
     const loop = (nowMs: number): void => {
       if (!this.running) return;
       const dt = this.clock.tick(nowMs);
       this.physics.step(dt);
       this.sceneManager.update(dt, this.scrollManager.scrollProgress);
-      this.renderer.render(this.sceneManager.scene, this.camera.three);
+      this.postprocessing.render(dt);
+      this.qualityLevel = this.postprocessing.getQuality();
+      if (this.fpsCounter) this.fpsCounter.tick(dt);
       this.rafHandle = requestAnimationFrame(loop);
     };
     this.rafHandle = requestAnimationFrame(loop);
@@ -132,19 +183,24 @@ export class App {
     this.sceneManager.dispose();
     this.scrollManager.destroy();
     this.physics.dispose();
+    this.postprocessing.dispose();
+    if (this.fpsCounter) this.fpsCounter.dispose();
     this.renderer.dispose();
     this.resize.dispose();
   }
 }
 
 /**
- * Bootstraps the App. Returns the app instance after Rapier has initialized.
+ * Bootstraps the App. Returns the app instance after all scenes registered
+ * (RAF starts after the loader gate dismisses).
  */
 export async function bootApp(): Promise<App> {
   const canvas = assertDefined(
     document.getElementById('gl') as HTMLCanvasElement | null,
     '<canvas id="gl"> not found in DOM'
   );
+  // Mark canvas decorative — screen readers should skip it.
+  canvas.setAttribute('aria-hidden', 'true');
   const app = new App(canvas);
   await app.start();
   return app;

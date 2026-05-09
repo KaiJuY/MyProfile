@@ -228,6 +228,20 @@ export class LeaderLineManager {
         rect.left < vw;
 
       if (inViewport && !e.hasDrawnIn) {
+        // prefers-reduced-motion: skip the draw-in transition entirely; just
+        // present the final dotted pattern in one frame.
+        const reducedMotion =
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reducedMotion) {
+          e.path.style.transition = 'none';
+          e.path.setAttribute('stroke-dasharray', '2,4');
+          e.path.setAttribute('stroke-dashoffset', '0');
+          e.hasDrawnIn = true;
+          continue;
+        }
+
         // Fire draw-in: dasharray = full length so the dashoffset animation
         // reads as a continuous reveal, then settle to the dotted pattern.
         e.path.style.transition = 'none';

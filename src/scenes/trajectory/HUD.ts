@@ -170,6 +170,18 @@ export class HUD {
       this.currentOpacity = targetOpacity;
       this.root.style.opacity = `${targetOpacity}`;
     }
+
+    // Step 08 deferred fix: when fully outside the section (opacity 0), set
+    // display:none so the HUD never participates in layout / interaction. This
+    // had been "harmless" because pointer-events were already disabled, but it
+    // shows up as a stray a11y stop on screen readers.
+    const wantHidden = targetOpacity <= 0.001;
+    const isHidden = this.root.style.display === 'none';
+    if (wantHidden && !isHidden) {
+      this.root.style.display = 'none';
+    } else if (!wantHidden && isHidden) {
+      this.root.style.display = '';
+    }
   }
 
   /**

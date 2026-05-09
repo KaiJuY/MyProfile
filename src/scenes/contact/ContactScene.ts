@@ -6,6 +6,7 @@ import type { SceneModule } from '../SceneManager';
 import type { ScrollManager } from '@core/ScrollManager';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import { damp } from '@utils/lerp';
+import { getUserPrefs } from '@core/UserPrefs';
 
 import { buildDimpleNormalMap, buildGolfBallMesh } from '../shared/golfBall';
 import { Hole } from './Hole';
@@ -131,6 +132,7 @@ export class ContactScene implements SceneModule {
   // DOM fade targets (contact + footer)
   private fadeTargets: FadeTarget[] = [];
   private styleTag: HTMLStyleElement | null = null;
+  private liveObserver: MutationObserver | null = null;
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -271,23 +273,39 @@ export class ContactScene implements SceneModule {
     // Mark the LIVE word inside the right footer span.
     // Existing markup is "VER 9.4.0 · TRACKED · LIVE" (single text node).
     // We wrap "LIVE" in its own span so we can attach a CSS animation.
+    this.wrapLiveWord();
+
+    // Step 08: lang-toggle robustness. The site's `applyLang(lang)` does
+    // `el.innerHTML = I18N[lang][key]` on `[data-i18n]` nodes — that blows
+    // away our LIVE wrap. Watch for that mutation and re-wrap on the spot.
     const right = document.querySelector<HTMLElement>('.footnote span:nth-child(2)');
-    if (right && !right.querySelector('.contact-live')) {
-      const text = right.textContent ?? '';
-      const idx = text.lastIndexOf('LIVE');
-      if (idx >= 0) {
-        const before = text.slice(0, idx);
-        const live = text.slice(idx, idx + 4);
-        const after = text.slice(idx + 4);
-        right.textContent = '';
-        right.appendChild(document.createTextNode(before));
-        const span = document.createElement('span');
-        span.className = 'contact-live';
-        span.textContent = live;
-        right.appendChild(span);
-        if (after) right.appendChild(document.createTextNode(after));
-      }
+    if (right) {
+      const observer = new MutationObserver(() => {
+        if (!right.querySelector('.contact-live')) this.wrapLiveWord();
+      });
+      observer.observe(right, { childList: true, characterData: true, subtree: true });
+      this.liveObserver = observer;
     }
+  }
+
+  /** Find "LIVE" inside .footnote span:nth-child(2) and wrap it for CSS animation. */
+  private wrapLiveWord(): void {
+    const right = document.querySelector<HTMLElement>('.footnote span:nth-child(2)');
+    if (!right) return;
+    if (right.querySelector('.contact-live')) return;
+    const text = right.textContent ?? '';
+    const idx = text.lastIndexOf('LIVE');
+    if (idx < 0) return;
+    const before = text.slice(0, idx);
+    const live = text.slice(idx, idx + 4);
+    const after = text.slice(idx + 4);
+    right.textContent = '';
+    right.appendChild(document.createTextNode(before));
+    const span = document.createElement('span');
+    span.className = 'contact-live';
+    span.textContent = live;
+    right.appendChild(span);
+    if (after) right.appendChild(document.createTextNode(after));
   }
 
   /** Inject the LIVE pulse keyframes (additive — does not affect existing styles). */
@@ -361,12 +379,38 @@ export class ContactScene implements SceneModule {
 
     const total = replay ? REPLAY_TOTAL_S : FIRST_PLAY_TOTAL_S;
 
+    // Reduced motion: skip the ball drop entirely. Hide the ball, fade in
+    // contact info immediately. We still build a tiny GSAP timeline so the
+    // onComplete bookkeeping fires identically.
+    if (getUserPrefs().reducedMotion) {
+      this.ballMesh.visible = false;
+      this.timeline = this.buildReducedMotionTimeline();
+      return;
+    }
+
     // Prepare positions in animation-local refs (closures bind ballMesh / body).
     if (isMobile || !this.ballBody) {
       this.timeline = this.buildMobileTimeline(total);
     } else {
       this.timeline = this.buildDesktopTimeline(total);
     }
+  }
+
+  /**
+   * Reduced-motion: zero-duration timeline that just snaps fade targets to 1
+   * and triggers `onAnimationComplete`. No ball drop, no shake.
+   */
+  private buildReducedMotionTimeline(): gsap.core.Timeline {
+    const tl = gsap.timeline({
+      onComplete: () => this.onAnimationComplete(),
+    });
+    for (const t of this.fadeTargets) {
+      t.el.style.opacity = '1';
+      t.el.style.transform = 'translateY(0)';
+    }
+    // Tiny duration so the onComplete fires next tick.
+    tl.to({}, { duration: 0.01 });
+    return tl;
   }
 
   /** Mobile: simplified — kinematic Y from above-hole straight to in-cup over total*0.6s. */
@@ -653,8 +697,11 @@ export class ContactScene implements SceneModule {
     //   AFTER TrajectoryScene in the same frame — so our writes are the last
     //   word and they win.
     if (inSection) {
-      const targetPitch = CAMERA_PITCH_MAX * Math.min(sp / 0.4, 1);
-      this.currentPitch = damp(this.currentPitch, targetPitch, CAMERA_PITCH_LAMBDA, dt);
+      const reducedMotion = getUserPrefs().reducedMotion;
+      const targetPitch = reducedMotion ? 0 : CAMERA_PITCH_MAX * Math.min(sp / 0.4, 1);
+      this.currentPitch = reducedMotion
+        ? 0
+        : damp(this.currentPitch, targetPitch, CAMERA_PITCH_LAMBDA, dt);
 
       // Apply over the trajectory's reset write. We assume trajectory has just
       // written (0,0,5)+lookAt(0,0,0). We re-aim at a point below origin to
@@ -715,6 +762,10 @@ export class ContactScene implements SceneModule {
     if (this.timeline) {
       this.timeline.kill();
       this.timeline = null;
+    }
+    if (this.liveObserver) {
+      this.liveObserver.disconnect();
+      this.liveObserver = null;
     }
     if (this.mounted) scene.remove(this.group);
 

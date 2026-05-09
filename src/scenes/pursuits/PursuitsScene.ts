@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getUserPrefs } from '@core/UserPrefs';
 import { gsap } from 'gsap';
 import type { SceneModule } from '../SceneManager';
 import type { ScrollManager } from '@core/ScrollManager';
@@ -202,15 +203,21 @@ export class PursuitsScene implements SceneModule {
     const targets = this.computeMorphTargets(secProgress);
     const now = performance.now();
 
+    const reducedMotion = getUserPrefs().reducedMotion;
     for (let i = 0; i < FRAME_COUNT; i++) {
       this.targetMorph[i] = targets[i];
-      // Frame-rate-independent damp toward target. Lambda ~5 → ~200ms convergence,
-      // which combines with our crossfade window (~scroll 0.14 wide ≈ many frames)
-      // to feel like an 800–1000ms wave when scrolling normally.
-      const dampFactor = 1 - Math.exp(-5 * dt);
-      this.currentMorph[i] += (this.targetMorph[i] - this.currentMorph[i]) * dampFactor;
-      if (Math.abs(this.currentMorph[i] - this.targetMorph[i]) < 0.001) {
+      if (reducedMotion) {
+        // Snap directly — no morph wave.
         this.currentMorph[i] = this.targetMorph[i];
+      } else {
+        // Frame-rate-independent damp toward target. Lambda ~5 → ~200ms
+        // convergence which combines with our crossfade window (~scroll 0.14
+        // wide ≈ many frames) to feel like an 800–1000ms wave when scrolling.
+        const dampFactor = 1 - Math.exp(-5 * dt);
+        this.currentMorph[i] += (this.targetMorph[i] - this.currentMorph[i]) * dampFactor;
+        if (Math.abs(this.currentMorph[i] - this.targetMorph[i]) < 0.001) {
+          this.currentMorph[i] = this.targetMorph[i];
+        }
       }
 
       const morph = this.currentMorph[i];

@@ -4,6 +4,7 @@ import type { SceneModule } from '../SceneManager';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import { clamp } from '@utils/lerp';
+import { getUserPrefs } from '@core/UserPrefs';
 import { SkillObject, type SkillDescriptor, type SkillGeometry } from './SkillObject';
 import { SandboxBoundary } from './SandboxBoundary';
 import { SandboxWindow } from './SandboxWindow';
@@ -329,11 +330,12 @@ export class ToolkitScene implements SceneModule {
     }
 
     // 4. Mobile path — fixed cluster, slow rotation, no physics.
-    if (isMobile || !this.physics.ready) {
-      const t = performance.now() * 0.001;
+    //    Reduced-motion path — same fixed cluster but no rotation either.
+    const reducedMotion = getUserPrefs().reducedMotion;
+    if (isMobile || reducedMotion || !this.physics.ready) {
+      const t = reducedMotion ? 0 : performance.now() * 0.001;
       for (const s of this.skills) {
         s.mesh.position.copy(s.home);
-        // Slow rotation around Y, with the per-skill X tilt baked in.
         const xTilt = s.desc.hasAngle ? (s.desc.angle * Math.PI) / 180 : 0;
         s.mesh.rotation.set(xTilt, t * 0.4 + s.desc.index * 0.7, 0);
         s.syncStaticLabel(this.camera);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { SceneModule } from '../SceneManager';
 import type { ScrollManager } from '@core/ScrollManager';
 import { saturate, damp } from '@utils/lerp';
+import { getUserPrefs } from '@core/UserPrefs';
 
 import {
   buildPath,
@@ -235,15 +236,20 @@ export class TrajectoryScene implements SceneModule {
 
     // Damp camera position toward target. Higher lambda during entry/exit
     // so the camera "drops in" / "fly out" feels deliberate without snapping.
-    const lambda = CAMERA_DAMP_LAMBDA;
-    this.cameraPos.x = damp(this.cameraPos.x, this.tmpPos.x, lambda, dt);
-    this.cameraPos.y = damp(this.cameraPos.y, this.tmpPos.y, lambda, dt);
-    this.cameraPos.z = damp(this.cameraPos.z, this.tmpPos.z, lambda, dt);
-
-    // Damp lookAt toward "look ahead" point.
-    this.lookAtTarget.x = damp(this.lookAtTarget.x, this.tmpAhead.x, LOOKAT_DAMP_LAMBDA, dt);
-    this.lookAtTarget.y = damp(this.lookAtTarget.y, this.tmpAhead.y, LOOKAT_DAMP_LAMBDA, dt);
-    this.lookAtTarget.z = damp(this.lookAtTarget.z, this.tmpAhead.z, LOOKAT_DAMP_LAMBDA, dt);
+    // Reduced motion: snap directly to target (no smoothing).
+    const reducedMotion = getUserPrefs().reducedMotion;
+    if (reducedMotion) {
+      this.cameraPos.copy(this.tmpPos);
+      this.lookAtTarget.copy(this.tmpAhead);
+    } else {
+      const lambda = CAMERA_DAMP_LAMBDA;
+      this.cameraPos.x = damp(this.cameraPos.x, this.tmpPos.x, lambda, dt);
+      this.cameraPos.y = damp(this.cameraPos.y, this.tmpPos.y, lambda, dt);
+      this.cameraPos.z = damp(this.cameraPos.z, this.tmpPos.z, lambda, dt);
+      this.lookAtTarget.x = damp(this.lookAtTarget.x, this.tmpAhead.x, LOOKAT_DAMP_LAMBDA, dt);
+      this.lookAtTarget.y = damp(this.lookAtTarget.y, this.tmpAhead.y, LOOKAT_DAMP_LAMBDA, dt);
+      this.lookAtTarget.z = damp(this.lookAtTarget.z, this.tmpAhead.z, LOOKAT_DAMP_LAMBDA, dt);
+    }
 
     // Apply to the shared camera.
     this.camera.position.copy(this.cameraPos);
@@ -279,12 +285,19 @@ export class TrajectoryScene implements SceneModule {
       const m: Milestone = this.path.milestones[i];
       const dist = Math.abs(pathT - m.t);
       const target = saturate(1 - dist / window_);
-      // Damp toward target — avoids flicker when scrolling fast.
-      this.itemOpacity[i] = damp(this.itemOpacity[i], target, 8, dt);
-      const o = this.itemOpacity[i];
-      const el = this.timelineItems[i];
-      el.style.opacity = `${o}`;
-      el.style.transform = `translateY(${(1 - o) * 18}px)`;
+      // Reduced motion: snap to target (no damp), and don't translate.
+      if (reducedMotion) {
+        this.itemOpacity[i] = target;
+        const el = this.timelineItems[i];
+        el.style.opacity = `${target}`;
+        el.style.transform = 'translateY(0)';
+      } else {
+        this.itemOpacity[i] = damp(this.itemOpacity[i], target, 8, dt);
+        const o = this.itemOpacity[i];
+        const el = this.timelineItems[i];
+        el.style.opacity = `${o}`;
+        el.style.transform = `translateY(${(1 - o) * 18}px)`;
+      }
     }
 
     // Update HUD. Pass the actual smoothed camera Z so DEPTH reads stay in

@@ -164,9 +164,34 @@ Ball drops into hole; footer fades after. Hybrid GSAP+Rapier per playbook footer
 
 ---
 
-## Step 08 — Polish  `[ ]`
+## Step 08 — Polish  `[x]`
 
 Loader, postprocessing (bloom/CA/noise + auto-quality), RWD, EN/中, perf budget, prefers-reduced-motion.
+
+**Acceptance criteria** (verbatim from `3DS/08-polish.md`):
+- [x] Loader displays boot sequence with [ok] flips and percentage — 5 rows (INIT WEBGL / LOAD MATCAP / INIT PHYSICS / COMPILE SHADERS / BUILD SCENES), 100ms stagger, "READY · CLICK TO ENTER", 10s timeout, `?nogate=1` for headless auto-dismiss
+- [x] Loader takes 1-3s on fresh load — `await page.waitForFunction(globalThis.app)` succeeds within ~1s after click
+- [x] Bloom visible but not overdone — `luminanceThreshold:0.7, intensity:0.4, mipmapBlur` (postprocessing pkg)
+- [x] Chromatic aberration barely perceptible — `offset:(0.0008, 0.0008), radialModulation:false`
+- [x] Quality toggle works HIGH/MEDIUM/LOW — bottom-right `FX · HIGH` button cycles HIGH→MEDIUM→LOW→HIGH (visible in `contact-desktop.png`)
+- [~] Auto-quality kicks in (CPU throttle) — logic implemented (5s window, FPS<50 → MEDIUM); not exercised in headless without DevTools throttle
+- [DEFER] Mobile: Chrome devtools mobile + real phone, no jank — real-phone test is user task; emulator mode passes scene-by-scene with no errors
+- [x] EN ↔ 中 toggle works — i18n key counts aligned across DOM/EN/ZH (was 110, not 120 as CLAUDE.md said — orchestrator note: stale CLAUDE.md but counts still match). WebGL boots once and survives lang swap. ContactScene now re-wraps `LIVE` via `MutationObserver` after `applyLang` clobbers innerHTML (fixes step 07 deferred issue).
+- [x] prefers-reduced-motion: heavy animations disabled — confirmed `app.userPrefs.reducedMotion=true`. Per-scene branches: Hero static / Pursuits snap-morph / Work no leader-draw-in / Toolkit static cluster / Trajectory snap camera / Contact instant fade-in
+- [DEFER] Lighthouse Performance ≥ 75 / ≥ 60 — not measurable from headless harness; user task
+- [x acknowledged FAIL] Bundle size — JS 1042KB gz vs 350KB target. **Rapier WASM base64-inlined is 1.83MB raw**, dominating the bundle. CSS 0.27KB gz, HTML 24.74KB gz, all under target. Documented as accepted deviation; future fix is non-compat Rapier + vite-plugin-wasm (out of step 08 scope).
+- [DEFER] Deploy + 4G phone test — user task
+
+**Other polish work delivered**:
+- TrajectoryScene HUD now `display:none` outside section (fixes step 07 deferred issue)
+- ContactScene LIVE-pulse `<span>` re-attaches via MutationObserver after lang toggle (fixes step 07 deferred issue)
+- `tweaks-panel.jsx` moved to `public/tweaks-panel.jsx` so Vite copies verbatim into `dist/` (fixes step 01 deferred issue)
+- JSON-LD Person schema added to `<head>` (Kai-Ju Yang / Allen / SE / NYCU / Hsinchu)
+- Canvas `aria-hidden="true"`
+- FPS counter behind `?debug=1`
+- HUD stops lingering at opacity 0 outside its section
+
+**Commit message on green**: `step 08: polish — loader, postprocessing, rwd, i18n, perf`
 
 ---
 
@@ -222,6 +247,32 @@ After step 07:
 - `src/scenes/HeroScene.ts` (modified — imports from shared/golfBall.ts; behavior unchanged, just refactored)
 - `src/core/App.ts` (modified — registers ContactScene LAST so its camera writes win over Trajectory's reset-to-default)
 - `index.html`: untouched (LIVE-pulse `<span>` wrap done at runtime; @keyframes injected via runtime `<style>`)
+
+After step 08:
+- `src/core/{UserPrefs,Loader,Postprocessing,FPSCounter}.ts` (added — 4 files)
+- `src/core/App.ts` (modified — wires UserPrefs/Loader/Postprocessing/FPSCounter; gates RAF on loader.whenDismissed())
+- All 6 scene files modified for `prefers-reduced-motion` branches: HeroScene, pursuits/PursuitsScene, work/LeaderLine, toolkit/ToolkitScene, trajectory/{TrajectoryScene,HUD}, contact/ContactScene
+- `index.html` (modified — head additions: meta description / OG / JSON-LD Person; `aria-hidden="true"` on canvas#gl; tweaks-panel.jsx path → `/tweaks-panel.jsx`)
+- `tweaks-panel.jsx` MOVED to `public/tweaks-panel.jsx` (Vite copies into dist/ verbatim)
+- `3DS/_verification/verify.mjs` (modified — URL now `?nogate=1` for headless auto-dismiss)
+
+**Bundle (production build, gzipped)**:
+- JS: 1042 KB gz (Rapier WASM base64-inlined dominates ~64% of raw)
+- CSS: 0.27 KB gz
+- HTML: 24.74 KB gz
+- Assets (matcap PNG, ball SVG, project PNGs): ~9 KB gz total
+
+**Final commit graph** (8 commits + initial 3):
+```
+9f4797b step 07: contact finale with ball drop animation
+a1f06c4 step 06: trajectory camera path + markers + HUD
+013b493 step 05: toolkit physics sandbox with MSDF labels
+c761d7f step 04: work section mini scenes with leader lines
+d8d9c27 step 03: pursuits 4-frame morph with vertex shader transitions
+76fd7a9 step 02: hero golf ball with rapier physics + stencil + live stats
+5896cb3 step 01: skeleton with Three.js + Rapier + Lenis + screen-to-world
+c390708 update index name.   ← original main
+```
 
 ---
 

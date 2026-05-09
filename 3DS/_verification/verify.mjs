@@ -9,7 +9,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const URL = 'http://127.0.0.1:5173/';
+// Step 08: include ?nogate=1 so the click-to-enter loader gate auto-dismisses
+// in headless. The loader still flashes its boot rows briefly.
+const URL = 'http://127.0.0.1:5173/?nogate=1';
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900, dpr: 1 },
   { name: 'mobile', width: 390, height: 844, dpr: 2 },

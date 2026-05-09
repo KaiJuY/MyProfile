@@ -4,6 +4,7 @@ import type { SceneModule } from './SceneManager';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import { damp, lerp, clamp } from '@utils/lerp';
+import { getUserPrefs } from '@core/UserPrefs';
 import { buildDimpleNormalMap, buildGolfBallMaterial } from './shared/golfBall';
 
 /**
@@ -336,12 +337,23 @@ export class HeroScene implements SceneModule {
     this.maskMesh.scale.set(stageWorldSize.width, stageWorldSize.height, 1);
 
     // 3. Mobile path — just rotate slowly and bail. No physics, no stat updates.
+    //    Reduced-motion path — keep ball at home rotation 0, write baseline
+    //    stats once. Same shape as mobile but without the slow rotation.
     if (isMobile || !this.ballBody) {
       this.ballMesh.position.copy(this.home);
-      this.ballMesh.rotation.y += dt * 0.3;
-      // Keep stats at baseline display — the playbook says "no physics-driven
-      // stats on mobile". We update once here in case lang toggle reset them.
+      if (!getUserPrefs().reducedMotion) {
+        this.ballMesh.rotation.y += dt * 0.3;
+      }
       this.writeStatsToDOM(BASELINE_SPIN, BASELINE_LAUNCH, BASELINE_CARRY);
+      return;
+    }
+    if (getUserPrefs().reducedMotion) {
+      // Honour OS prefers-reduced-motion. Keep the ball at home, no impulses,
+      // no stats updates — just a static frame.
+      this.ballMesh.position.copy(this.home);
+      this.ballMesh.rotation.set(0, 0, 0);
+      this.writeStatsToDOM(BASELINE_SPIN, BASELINE_LAUNCH, BASELINE_CARRY);
+      this.trailSvg.style.opacity = '0';
       return;
     }
 
