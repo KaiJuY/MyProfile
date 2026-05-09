@@ -1,0 +1,24 @@
+{
+  "consoleLogs": [
+    "[desktop/info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold",
+    "[desktop/debug] [vite] connecting...",
+    "[desktop/debug] [vite] connected.",
+    "[desktop/warn] You are using the in-browser Babel transformer. Be sure to precompile your scripts for production - https://babeljs.io/docs/setup/",
+    "[desktop/log] Rapier ready",
+    "[desktop/error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[desktop/debug] unsupported GPOS table LookupType 8 format 2",
+    "[desktop/debug] unsupported GPOS table LookupType 5 format 1",
+    "[desktop/debug] unsupported GSUB table LookupType 6 format 2",
+    "[desktop/debug] unsupported GSUB table LookupType 6 format 1",
+    "[mobile/info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold",
+    "[mobile/debug] [vite] connecting...",
+    "[mobile/debug] [vite] connected.",
+    "[mobile/warn] You are using the in-browser Babel transformer. Be sure to precompile your scripts for production - https://babeljs.io/docs/setup/",
+    "[mobile/log] Rapier ready",
+    "[mobile/debug] unsupported GPOS table LookupType 8 format 2",
+    "[mobile/debug] unsupported GPOS table LookupType 5 format 1",
+    "[mobile/debug] unsupported GSUB table LookupType 6 format 2",
+    "[mobile/debug] unsupported GSUB table LookupType 6 format 1"
+  ],
+  "errors": []
+}

@@ -8,6 +8,7 @@ import { HeroScene } from '@scenes/HeroScene';
 import { PursuitsScene } from '@scenes/pursuits/PursuitsScene';
 import { WorkScene } from '@scenes/work/WorkScene';
 import { ToolkitScene } from '@scenes/toolkit/ToolkitScene';
+import { TrajectoryScene } from '@scenes/trajectory/TrajectoryScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 
@@ -81,6 +82,15 @@ export class App {
     // get pushed away from cursor. Mobile: fixed grid + slow rotation only.
     await this.sceneManager.register(
       new ToolkitScene(this.camera.three, this.physics)
+    );
+
+    // Step 06: Trajectory — camera flies along a 3D path through the career
+    // section. Owns the SHARED main camera while inside section#career and
+    // restores it to default (0,0,5) → origin when leaving. Markers + grid
+    // floor render in 3D; HUD is a fixed-position HTML overlay. No stencil
+    // (full-viewport — no clip needed).
+    await this.sceneManager.register(
+      new TrajectoryScene(this.camera.three, this.scrollManager)
     );
 
     // Begin RAF

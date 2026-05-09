@@ -111,9 +111,32 @@ Single Rapier sandbox + MSDF text labels + cursor-as-collider + stencil-clipped.
 
 ---
 
-## Step 06 — Trajectory  `[ ]`
+## Step 06 — Trajectory  `[x]`
 
-Theatre.js camera flythrough along 3D timeline + HTML milestone fades + HUD readout.
+Camera flythrough along CatmullRomCurve3 + HTML milestone fades + HUD readout. (Theatre.js skipped per playbook §3 — direct math.)
+
+**Acceptance criteria** (verbatim from `3DS/06-trajectory.md`):
+- [x] Camera drops to start of path on entry — `damp` from default `(0,0,5)` to path point at sectionProgress crossing ~0.4 → 0
+- [x] Continued scroll moves camera along path — verified inspect: cameraZ monotonic -13 → -16 → -20 → -24 → -28 → -29 across @0.2 / @0.5 / @0.8
+- [x] Camera passes through ring markers like checkpoints — `career@0.5-desktop.png` shows large ring center-screen
+- [x] Each milestone's HTML text fades in — at @0.6 (sp≈0.76 ≈ marker[3].t=0.75) DOM idx 0 (SunSun) opacity ≈ 0.93. Reverse mapping (oldest first as scroll) verified.
+- [x] HUD displays POS/DEPTH/STEP/progress bar — `career@0.2-desktop.png` shows top-right HUD with date/depth/step + thin progress bar
+- [x] HUD typography matches site identity — monospace, all-caps, `letter-spacing:0.16em`, "FILE — TRAJECTORY_<date>" header echoes existing nav file-stamp aesthetic
+- [x] Grid floor visible — shader-based XZ plane with major (1u) + minor (0.2u) lines, radial fade-out toward horizon, uCenter follows camera
+- [x] Reverse scroll: camera/text/HUD update — `damp(...)` is symmetric, no GSAP-forward-only
+- [~] No FPS drops — draw calls < 30 (5 markers × 3 + 1 grid + HUD is DOM); not measured live
+- [x] Camera path looks like believable trajectory — centripetal CatmullRom, monotonically ascending Y + decreasing Z (no zigzag)
+
+**Path control points used** (5 control + 4 named milestones):
+1. `(0,0,0)` — NYCU 2010.09 (curve t=0)
+2. `(3,1,-8)` — Tokyo Electron 2018.02 (t=0.25)
+3. `(6,2,-16)` — JCC 2021.06 (t=0.50)
+4. `(9,3,-24)` — SunSun 2025.11 (t=0.75)
+5. `(12,4,-32)` — trailing fly-past anchor for exit transition (sectionProgress 0.75–1.0)
+
+**Camera-ownership contract**: TrajectoryScene only writes to camera while `0 < sectionProgress("career") < 1`. Outside that, camera dampens back to default `(0,0,5)`. Other scenes' screen-to-world projection assumes default camera; off-screen anchors during career section put their meshes outside the frustum, so no visible glitch.
+
+**Commit message on green**: `step 06: trajectory camera path + markers + HUD`
 
 ---
 
@@ -168,6 +191,12 @@ After step 05:
 - `package.json` / `package-lock.json` (modified — `troika-three-text@^0.52.4` runtime dep)
 - `index.html`: untouched
 - Stencil ref=2 for toolkit (Hero uses ref=1; renderer's `autoClearStencil` true so they don't collide)
+
+After step 06:
+- `src/scenes/trajectory/{TrajectoryScene,PathBuilder,Marker,GridFloor,HUD}.ts` (added — 5 files)
+- `src/core/App.ts` (modified — registers TrajectoryScene after ToolkitScene)
+- `index.html`: untouched (HUD is DOM-injected by `HUD.ts` into body)
+- No new deps (Theatre.js intentionally skipped per playbook §3)
 
 ---
 
