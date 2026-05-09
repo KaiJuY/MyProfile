@@ -4,7 +4,7 @@ import { Clock } from './Clock';
 import { WindowResizeBroadcaster } from './ResizeObserver';
 import { ScrollManager } from './ScrollManager';
 import { SceneManager } from '@scenes/SceneManager';
-import { TestCube } from '@scenes/TestCube';
+import { HeroScene } from '@scenes/HeroScene';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 
@@ -53,8 +53,11 @@ export class App {
     // adds bodies. Step 01 has no bodies, but the discipline is set here.
     await this.physics.init();
 
-    // Register scene modules. TestCube is the only one for step 01.
-    await this.sceneManager.register(new TestCube(this.camera.three, 5));
+    // Register scene modules. Step 02 replaces TestCube with HeroScene
+    // (3D golf ball + Rapier physics + stencil-clipped viewing window).
+    await this.sceneManager.register(
+      new HeroScene(this.camera.three, this.physics, this.renderer.three.domElement)
+    );
 
     // Begin RAF
     this.running = true;

@@ -40,3 +40,36 @@ body {
   position: relative;
   z-index: 1;
 }
+
+/* Step 02 — Hero golf ball.
+ *
+ * Hide the static SVG ball ONLY after WebGL has mounted (HeroScene.init() adds
+ * `webgl-ready` to <html>). Until then the SVG paints, so there's no flash of
+ * empty hero stage. We never delete the <img> from the DOM (CLAUDE.md explicit
+ * rule) — just visually suppress it.
+ */
+.webgl-ready .sphere img.ballart {
+  display: none;
+}
+
+/* The CSS bobbing animation on .sphere itself causes the WebGL anchor (which
+ * reads .sphere's getBoundingClientRect each frame) to also bob — a free
+ * physical-feeling float. But the rotate(-2deg → 2deg) on the wrapper visually
+ * tilts NOTHING once the SVG is hidden, and the sphere wrapper's transform
+ * affects bounding-rect math in ways that don't compose cleanly with our
+ * stencil mask. Suppress the bob animation but keep the wrapper sized — the
+ * physics anchor-spring + idle noise simulates the bob in 3D. */
+.webgl-ready .sphere-stage .sphere {
+  animation: none;
+  filter: none;
+}
+.webgl-ready .sphere-stage .sphere-blur,
+.webgl-ready .sphere-stage .trail {
+  /* The CSS .trail and .sphere-blur are 2D radial gradients meant to back the
+   * SVG ball — once WebGL renders the real ball, these would either double up
+   * or clash with the matcap aesthetic. Hide them. */
+  display: none;
+}
+
+/* SVG trajectory trail injected by HeroScene (.hero-trail-svg) — no rules
+ * needed here; HeroScene styles inline. Listed for grep visibility. */
