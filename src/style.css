@@ -117,6 +117,23 @@ body {
 .flythrough-3d .tee::before {
   display: none;
 }
+/* Hide the CSS-driven impact decorations once the WebGL flythrough is mounted.
+ * The new shockwave + particle + smoke + light-ray FX (built in
+ * FlythroughScene) replace the legacy red-orange `.ball-trail` gradient,
+ * `.impact-flash` ring, `.impact-sparks` stars, and `.fly-blur` overlay. The
+ * underlying DOM stays in place so layout / scroll measurements aren't
+ * disturbed; we only suppress visibility. Mobile / reduced-motion paths skip
+ * `.flythrough-3d` entirely so the original CSS FX still play there. */
+.flythrough-3d #ballTrail,
+.flythrough-3d .ball-trail,
+.flythrough-3d #impactFlash,
+.flythrough-3d .impact-flash,
+.flythrough-3d #impactSparks,
+.flythrough-3d .impact-sparks,
+.flythrough-3d #flyBlur,
+.flythrough-3d .fly-blur {
+  display: none !important;
+}
 
 
 /* Wave 6 — Trajectory card + timeline takeover.

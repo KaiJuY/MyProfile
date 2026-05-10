@@ -57,11 +57,13 @@ export class Hole {
     this.surfaceY = sy;
 
     // 1. Rim torus — emissive shader so we can flash it on ball-drop.
+    // Glow color uses the site accent (#FF6A00) so the "thunk" reads as part
+    // of the brand palette rather than a stray cool-blue tint.
     const rimGeom = new THREE.TorusGeometry(rr, tr, 12, 64);
     this.rimMaterial = new THREE.ShaderMaterial({
       uniforms: {
         uBase: { value: new THREE.Color(0x303838) }, // dim cool gray
-        uGlow: { value: new THREE.Color(0xa8d8e8) }, // brief cool flash
+        uGlow: { value: new THREE.Color(0xff6a00) }, // accent flash on drop
         uGlowAmount: { value: 0.0 },                  // animated 0..1
       },
       vertexShader: /* glsl */ `

@@ -124,8 +124,10 @@ export class FlythroughScene implements SceneModule {
   private impactX = 0;
   private impactZ = 0;
 
-  /** Used to detect "launch" — the screen-space center of the CSS tee. */
-  private lastTeeScreenY = 0;
+  /** Previous-frame ball↔tee divergence in CSS pixels. Used to detect the
+   *  EXACT frame the ball starts moving away from the tee — the moment we
+   *  fire the impact FX (smoke, rays, shockwave, particles). */
+  private lastDivergencePx = 0;
 
   constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
@@ -541,7 +543,11 @@ export class FlythroughScene implements SceneModule {
     const onMobile = isMobileViewport();
 
     const secProgress = this.scrollManager.sectionProgress('flythrough');
-    if (secProgress < -0.15 || secProgress > 1.15) {
+    // Tight visibility gate — outside [0.05, 0.95] the section isn't really in
+    // view yet, so skip the entire FX update including impact FX. Prevents the
+    // shockwave / smoke from rendering on the brief frames where the section
+    // pre-rolls into view.
+    if (secProgress < 0.05 || secProgress > 0.95) {
       this.combined.group.visible = false;
       // Ball might be detached — re-attach it before hiding so next entry
       // restores ball-on-tee state.
@@ -549,6 +555,7 @@ export class FlythroughScene implements SceneModule {
       this.hideAllFX();
       this.impactArmed = true;
       this.impactElapsed = -1;
+      this.lastDivergencePx = 0;
       return;
     }
 
@@ -596,20 +603,21 @@ export class FlythroughScene implements SceneModule {
       teeWorldTopY = this.combined.group.position.y + tipDy;
       this.impactX = this.combined.group.position.x + tipDx;
       this.impactZ = this.combined.group.position.z;
-
-      this.lastTeeScreenY = teeRect.top + teeRect.height * 0.5;
     } else {
       this.combined.teeMesh.visible = false;
     }
 
     // ── Detect launch — divergence between #flyBall and #tee centers ─────
+    // Use full euclidean distance so a diagonal launch trajectory triggers
+    // the same instant a vertical one would.
     const ballCenterY = ballRect.top + ballRect.height * 0.5;
     const ballCenterX = ballRect.left + ballRect.width * 0.5;
     const teeCenterX = teeRect.left + teeRect.width * 0.5;
-    const dyPx = Math.abs(ballCenterY - this.lastTeeScreenY);
-    const dxPx = Math.abs(ballCenterX - teeCenterX);
-    const launched =
-      inFlight && (dyPx > LAUNCH_DIVERGENCE_PX || dxPx > LAUNCH_DIVERGENCE_PX);
+    const teeCenterY = teeRect.top + teeRect.height * 0.5;
+    const dxPx = ballCenterX - teeCenterX;
+    const dyPx = ballCenterY - teeCenterY;
+    const divergencePx = Math.hypot(dxPx, dyPx);
+    const launched = inFlight && divergencePx > LAUNCH_DIVERGENCE_PX;
 
     if (launched && !this.ballDetached) {
       // Detach the ball into the scene root, preserving its world matrix so
@@ -649,7 +657,15 @@ export class FlythroughScene implements SceneModule {
     }
 
     // ── Impact FX trigger ────────────────────────────────────────────────
-    if (this.impactArmed && inFlight && secProgress < PRE_IMPACT_SP + 0.15) {
+    // Fire on the EXACT frame the ball first separates from the tee — i.e.
+    // when the ball↔tee screen-space distance crosses LAUNCH_DIVERGENCE_PX
+    // upward. Coupling to the visible "ball-leaving-tee" event (rather than a
+    // scroll-progress proxy) means the FX stays synced to the actual hit
+    // moment regardless of scroll velocity / Lenis easing.
+    const justCrossed =
+      this.lastDivergencePx <= LAUNCH_DIVERGENCE_PX &&
+      divergencePx > LAUNCH_DIVERGENCE_PX;
+    if (this.impactArmed && inFlight && justCrossed) {
       this.impactArmed = false;
       this.impactElapsed = 0;
       const impactX = this.impactX;
@@ -705,12 +721,24 @@ export class FlythroughScene implements SceneModule {
       }
     }
 
-    // Re-arm if we scroll back BEFORE impact.
-    if (!inFlight && !this.impactArmed) {
+    // Re-arm when the ball returns to the tee — divergence drops back below
+    // the threshold (e.g. user scrolls back up before impact, or the section
+    // exits and re-enters).
+    if (divergencePx <= LAUNCH_DIVERGENCE_PX && !this.impactArmed) {
       this.impactArmed = true;
-      this.impactElapsed = -1;
-      this.hideAllFX();
     }
+    // If we scroll back BEFORE in-flight, also clear any in-progress FX so
+    // the next launch starts cleanly.
+    if (!inFlight) {
+      if (!this.impactArmed) this.impactArmed = true;
+      if (this.impactElapsed >= 0) {
+        this.impactElapsed = -1;
+        this.hideAllFX();
+      }
+    }
+
+    // Save divergence for next frame's threshold-crossing detection.
+    this.lastDivergencePx = divergencePx;
   }
 
   /** Re-parent the ball mesh back into the combined group at its original

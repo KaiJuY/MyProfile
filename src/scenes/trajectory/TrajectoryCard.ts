@@ -43,7 +43,10 @@ const FADE_IN_DELAY_MS = 120;
 // Distance in pixels between the projected marker position and the card edge.
 // Card sits ALWAYS to the right of the ring (Issue #2 — user wants it pinned
 // right, not auto-flipping). Wider offset accommodates the larger card.
-const HORIZONTAL_OFFSET_PX = 120;
+// Bumped 120 → 144 (×1.2) per follow-up feedback: card needed slightly more
+// breathing room from the ring. Right-edge clamp below still keeps the card
+// fully visible on narrow viewports.
+const HORIZONTAL_OFFSET_PX = 144;
 const VERTICAL_OFFSET_PX = 0;
 
 interface CardContent {
