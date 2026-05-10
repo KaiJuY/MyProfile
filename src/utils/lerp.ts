@@ -21,3 +21,13 @@ export function saturate(value: number): number {
 export function damp(current: number, target: number, lambda: number, dt: number): number {
   return lerp(current, target, 1 - Math.exp(-lambda * dt));
 }
+
+/**
+ * Smoothstep with explicit edges. Returns 0 if x <= edge0, 1 if x >= edge1, and
+ * a Hermite-smooth ramp 3t² − 2t³ in between. Useful for anchor-strength ramps.
+ */
+export function smoothstep(x: number, edge0: number, edge1: number): number {
+  if (edge1 === edge0) return x < edge0 ? 0 : 1;
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}

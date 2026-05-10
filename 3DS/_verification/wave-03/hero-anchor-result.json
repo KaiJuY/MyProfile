@@ -1,0 +1,91 @@
+{
+  "result": {
+    "passed": true,
+    "reason": "ball returned to home and settled below tolerance",
+    "tolerances": {
+      "POS_TOL": 0.1,
+      "VEL_TOL": 0.05
+    },
+    "initial": {
+      "home": {
+        "x": 1.610358462458149,
+        "y": -0.22251236863019694,
+        "z": 0.2716563293055776
+      },
+      "ballPos": {
+        "x": 1.610358476638794,
+        "y": -0.2225123643875122,
+        "z": 0.271656334400177
+      },
+      "ballLinvel": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "sphereRect": {
+        "left": 881.203125,
+        "top": 292.328125,
+        "width": 417.59375,
+        "height": 417.59375
+      }
+    },
+    "midHit": {
+      "pos": {
+        "x": 2.5299510955810547,
+        "y": -1.1421030759811401,
+        "z": 0.2716562747955322
+      },
+      "linvel": {
+        "x": -3.540011405944824,
+        "y": 3.5400047302246094,
+        "z": 2.047496394652626e-7
+      },
+      "speed": 5.006327420797815
+    },
+    "atRest": {
+      "pos": {
+        "x": 1.610358476638794,
+        "y": -0.2225123643875122,
+        "z": 0.271656334400177
+      },
+      "home": {
+        "x": 1.610358462458149,
+        "y": -0.22251236863019694,
+        "z": 0.2716563293055776
+      },
+      "linvel": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "posErr": 1.5653945384354598e-8,
+      "speed": 0,
+      "scrollProgress": 0,
+      "scrollY": 0,
+      "anchorStrength": 1,
+      "meshVisible": true,
+      "ballPaused": false,
+      "stageSize": {
+        "width": 2.6693762908488345,
+        "height": 2.6693762908488345
+      },
+      "halfW": 1.2012193308819756,
+      "halfH": 1.2012193308819756,
+      "bodyType": 0
+    }
+  },
+  "consoleLogs": [
+    "[info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold",
+    "[debug] [vite] connecting...",
+    "[debug] [vite] connected.",
+    "[warn] You are using the in-browser Babel transformer. Be sure to precompile your scripts for production - https://babeljs.io/docs/setup/",
+    "[log] Rapier ready",
+    "[error] Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "[debug] unsupported GPOS table LookupType 8 format 2",
+    "[debug] unsupported GPOS table LookupType 5 format 1",
+    "[debug] unsupported GSUB table LookupType 6 format 2",
+    "[debug] unsupported GSUB table LookupType 6 format 1",
+    "[log] [postprocessing] auto-downgrade MEDIUM→LOW (avg fps 15.8)"
+  ],
+  "errors": []
+}

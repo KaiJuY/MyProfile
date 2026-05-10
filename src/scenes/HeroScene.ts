@@ -4,7 +4,7 @@ import type { SceneModule } from './SceneManager';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import type { ScrollManager } from '@core/ScrollManager';
-import { damp, lerp, clamp } from '@utils/lerp';
+import { damp, lerp, clamp, smoothstep } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
 import { buildGolfBallMeshFromGLB } from './shared/golfBall';
 
@@ -47,12 +47,20 @@ const AMPLIFY = 7;
 const MOUSE_VEL_EMA = 0.25;
 /** ms after last mousemove event before we treat the cursor as stationary. */
 const MOUSE_IDLE_MS = 50;
-/** ms after last ball-cursor contact before we re-engage anchor spring. */
+/** ms after last ball-cursor contact before we resume idle-noise impulses. */
 const ANCHOR_REENGAGE_MS = 800;
-/** Anchor critical-damp lambda (higher = snappier return to home position). */
-const ANCHOR_LAMBDA = 4;
-/** Linear velocity damping lambda used on idle-return. */
-const VEL_DAMP_LAMBDA = 6;
+/** Anchor ramp begin (ms since hit) — strength is 0 until here so the impulse "wins". */
+const ANCHOR_RAMP_START_MS = 200;
+/** Anchor ramp end (ms since hit) — strength is 1 from here onward. */
+const ANCHOR_RAMP_END_MS = 600;
+/** Spring rate that converts position-error → desired velocity (1/s). */
+const ANCHOR_SPRING_LAMBDA = 5;
+/** Blend rate for current linvel → desired velocity (1/s). Multiplied by anchorStrength ramp. */
+const ANCHOR_BLEND_LAMBDA = 6;
+/** Deadzone radius (world units) — within this AND under speed threshold ⇒ snap-to-home. */
+const ANCHOR_DEADZONE_POS = 0.05;
+/** Deadzone speed threshold (world units / s). */
+const ANCHOR_DEADZONE_VEL = 0.05;
 /** Idle "wind on tee" impulse magnitude. */
 const IDLE_NOISE_IMPULSE = 0.0015;
 /** Idle noise period (seconds between random impulses). */
@@ -77,6 +85,7 @@ const CURSOR_RADIUS = 0.3;
 const BASELINE_SPIN = 2840;
 const BASELINE_LAUNCH = 11.2;
 const BASELINE_CARRY = 262;
+
 
 // Mobile gate: low-end touch devices skip physics + interaction entirely.
 const isMobile =
@@ -146,7 +155,7 @@ export class HeroScene implements SceneModule {
   private lastMouseScreen = { x: 0, y: 0 };
   private mouseVel = { x: 0, y: 0 };
   private lastMouseT = 0;
-  private lastContactT = 0;
+  /** ms timestamp of most recent ball-cursor contact / hit (drives anchor ramp + stat decay). */
   private lastHitT = 0;
   private idleNoiseAccum = 0;
   private paused = false;
@@ -312,9 +321,17 @@ export class HeroScene implements SceneModule {
         .setAngularDamping(0.5)
         .setGravityScale(0.0);
       this.ballBody = this.physics.addRigidBody(ballDesc);
+      // Hero ball is a SENSOR collider — no physics contact response with any
+      // other body in the shared world (Toolkit's SandboxBoundary walls and
+      // SkillObject bodies live at world-origin and physically overlap the
+      // hero ball's home; without sensor isolation the hero ball pings off
+      // those invisible bodies forever, which is the reported sticky-corner
+      // jitter). Cursor "contact" is detected by distance check below, not by
+      // the physics solver, so we don't need real contact response anyway.
       const ballColDesc = RAPIER.ColliderDesc.ball(BALL_RADIUS)
         .setRestitution(0.6)
-        .setDensity(0.5 / ((4 / 3) * Math.PI * BALL_RADIUS ** 3)); // → mass ≈ 0.5
+        .setDensity(0.5 / ((4 / 3) * Math.PI * BALL_RADIUS ** 3)) // → mass ≈ 0.5
+        .setSensor(true);
       this.physics.addCollider(ballColDesc, this.ballBody);
 
       // Kinematic cursor — we set its translation each frame, Rapier handles
@@ -325,7 +342,11 @@ export class HeroScene implements SceneModule {
         HERO_DEPTH * -1 // way out of the way until first mousemove
       );
       this.cursorBody = this.physics.addRigidBody(cursorDesc);
-      const cursorColDesc = RAPIER.ColliderDesc.ball(CURSOR_RADIUS).setRestitution(0.5);
+      // Cursor is also a sensor — same rationale, plus we drive its position
+      // each frame and only use it for the distance test below.
+      const cursorColDesc = RAPIER.ColliderDesc.ball(CURSOR_RADIUS)
+        .setRestitution(0.5)
+        .setSensor(true);
       this.physics.addCollider(cursorColDesc, this.cursorBody);
     }
 
@@ -466,41 +487,37 @@ export class HeroScene implements SceneModule {
         { x: dy * vx * torqueScale, y: -dx * vy * torqueScale, z: 0 },
         true
       );
-      this.lastContactT = now;
       this.lastHitT = now;
     }
 
-    // 7. Anchor spring + idle noise (only when we haven't been hit recently).
-    const sinceContact = now - this.lastContactT;
-    if (sinceContact > ANCHOR_REENGAGE_MS) {
-      // Spring: position-difference scaled to a small impulse each tick. Damping
-      // on the body (linearDamping=0.4) handles the velocity decay; we just
-      // tug toward home.
-      const px = this.home.x - ballPos.x;
-      const py = this.home.y - ballPos.y;
-      const pz = this.home.z - ballPos.z;
-      this.ballBody.applyImpulse(
-        {
-          x: px * ANCHOR_LAMBDA * dt * 0.2,
-          y: py * ANCHOR_LAMBDA * dt * 0.2,
-          z: pz * ANCHOR_LAMBDA * dt * 0.2,
-        },
-        true
-      );
+    // 7. Always-on critically-damped anchor toward home.
+    //    Strength ramps from 0 at hit-time to 1 by ANCHOR_RAMP_END_MS so the
+    //    initial impulse "wins" and the ball flies before being pulled back.
+    //    After the ramp completes, the anchor reliably resolves the ball to
+    //    home regardless of where the wall-clamp left it. (No 800ms gate — the
+    //    previous gated spring caused sticky-corner jitter when the ball
+    //    bounced off the soft clamp before re-engagement.)
+    const sinceHit = now - this.lastHitT;
+    const anchorStrength = smoothstep(sinceHit, ANCHOR_RAMP_START_MS, ANCHOR_RAMP_END_MS);
 
-      // Damp linear velocity toward zero — critical-damped return.
+    if (anchorStrength > 0.0) {
       const lv = this.ballBody.linvel();
-      const dampFactor = 1 - Math.exp(-VEL_DAMP_LAMBDA * dt);
-      this.ballBody.setLinvel(
-        {
-          x: lv.x * (1 - dampFactor),
-          y: lv.y * (1 - dampFactor),
-          z: lv.z * (1 - dampFactor),
-        },
-        true
-      );
+      // Desired velocity from a position-spring: pulls ball toward home.
+      const desiredVx = (this.home.x - ballPos.x) * ANCHOR_SPRING_LAMBDA * anchorStrength;
+      const desiredVy = (this.home.y - ballPos.y) * ANCHOR_SPRING_LAMBDA * anchorStrength;
+      const desiredVz = (this.home.z - ballPos.z) * ANCHOR_SPRING_LAMBDA * anchorStrength;
+      // Critically-damped blend: lerp current linvel → desired via exp decay.
+      // Larger lambda when anchorStrength is high → faster settle, no oscillation.
+      const blendLambda = ANCHOR_BLEND_LAMBDA * (1 + 4 * anchorStrength);
+      const newVx = damp(lv.x, desiredVx, blendLambda, dt);
+      const newVy = damp(lv.y, desiredVy, blendLambda, dt);
+      const newVz = damp(lv.z, desiredVz, blendLambda, dt);
+      this.ballBody.setLinvel({ x: newVx, y: newVy, z: newVz }, true);
+    }
 
-      // Idle "wind on tee" noise — small random impulse every IDLE_NOISE_PERIOD.
+    // Idle "wind on tee" noise — only after the original re-engage window so a
+    // freshly-settled ball isn't immediately jiggled. (Same gate as before.)
+    if (sinceHit > ANCHOR_REENGAGE_MS) {
       this.idleNoiseAccum += dt;
       if (this.idleNoiseAccum > IDLE_NOISE_PERIOD) {
         this.idleNoiseAccum = 0;
@@ -521,23 +538,58 @@ export class HeroScene implements SceneModule {
     this.ballMesh.position.set(t.x, t.y, t.z);
     this.ballMesh.quaternion.set(r.x, r.y, r.z, r.w);
 
-    // Keep ball clamped to the stencil window in physics-space too — even
-    // though stencil clips visually, a runaway ball makes the stat readouts
-    // weird. Soft clamp: if the ball is more than 1.5× the stage size away
-    // from home, snap velocity to push it back.
+    // Soft physics-space clamp to the stencil window. Pure position clamp +
+    // ZERO ONLY THE OUTWARD VELOCITY COMPONENT — never zero a component that's
+    // already pulling the ball back inside, otherwise the anchor (which sets
+    // velocity TOWARD home each frame) gets cancelled at the wall and the ball
+    // wedges in the corner forever (the original sticky-jitter bug).
     const halfW = stageWorldSize.width * 0.45;
     const halfH = stageWorldSize.height * 0.45;
-    if (Math.abs(t.x - this.home.x) > halfW || Math.abs(t.y - this.home.y) > halfH) {
-      // Clamp position back inside.
+    const dxFromHome = t.x - this.home.x;
+    const dyFromHome = t.y - this.home.y;
+    const violateX = Math.abs(dxFromHome) > halfW;
+    const violateY = Math.abs(dyFromHome) > halfH;
+    if (violateX || violateY) {
       const cx = clamp(t.x, this.home.x - halfW, this.home.x + halfW);
       const cy = clamp(t.y, this.home.y - halfH, this.home.y + halfH);
       this.ballBody.setTranslation({ x: cx, y: cy, z: this.home.z }, true);
-      // Reflect velocity instead of zeroing — feels more like a wall than glue.
       const lv = this.ballBody.linvel();
+      // Sign of dxFromHome tells us which wall the ball hit: +halfW if positive.
+      // Only zero the outward component (sign(lv.x) === sign(dxFromHome)).
+      const zeroOutwardX =
+        violateX && Math.sign(lv.x) === Math.sign(dxFromHome) && lv.x !== 0;
+      const zeroOutwardY =
+        violateY && Math.sign(lv.y) === Math.sign(dyFromHome) && lv.y !== 0;
       this.ballBody.setLinvel(
-        { x: lv.x * -0.5, y: lv.y * -0.5, z: 0 },
+        {
+          x: zeroOutwardX ? 0 : lv.x,
+          y: zeroOutwardY ? 0 : lv.y,
+          z: 0,
+        },
         true
       );
+    }
+
+    // Deadzone snap-to-home: if the ball is essentially at rest near home, just
+    // pin it. Prevents endless sub-pixel oscillation from idle-noise + spring.
+    {
+      const lv = this.ballBody.linvel();
+      const dxh = this.home.x - t.x;
+      const dyh = this.home.y - t.y;
+      const dzh = this.home.z - t.z;
+      const posErr2 = dxh * dxh + dyh * dyh + dzh * dzh;
+      const speed2 = lv.x * lv.x + lv.y * lv.y + lv.z * lv.z;
+      if (
+        anchorStrength > 0.95 &&
+        posErr2 < ANCHOR_DEADZONE_POS * ANCHOR_DEADZONE_POS &&
+        speed2 < ANCHOR_DEADZONE_VEL * ANCHOR_DEADZONE_VEL
+      ) {
+        this.ballBody.setTranslation(
+          { x: this.home.x, y: this.home.y, z: this.home.z },
+          true
+        );
+        this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      }
     }
 
     // 9. Stats binding.
