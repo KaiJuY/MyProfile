@@ -672,6 +672,15 @@ export class ContactScene implements SceneModule {
     const sp = this.scrollManager.sectionProgress(SECTION_ID);
     const inSection = sp > 0.0001;
 
+    // Perf gate: when the contact section hasn't been touched yet AND we're
+    // not in the middle of an animation, bail. Static sites with #contact
+    // far below the fold burned 5+% CPU per frame on this scene's "is the
+    // animation done? should we mount?" book-keeping. We still let the
+    // gsap timeline tick through if it's actively playing (rare).
+    if (!inSection && !this.isPlaying && !this.mounted && this.currentPitch === 0) {
+      return;
+    }
+
     // Mount/unmount the visuals when entering/leaving the section.
     if (inSection) {
       this.mount();

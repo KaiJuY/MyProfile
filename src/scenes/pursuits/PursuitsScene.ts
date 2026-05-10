@@ -199,6 +199,16 @@ export class PursuitsScene implements SceneModule {
     // Section progress drives which frame is active.
     const secProgress = this.scrollManager.sectionProgress('flythrough');
 
+    // Perf gate with hysteresis: when the section is far off-screen, unmount
+    // any still-mounted frames and bail. The active range matches WorkScene
+    // and others ([-0.15, 1.15]) — wide enough that there's no pop-in/out.
+    if (secProgress < -0.15 || secProgress > 1.15) {
+      for (const f of this.frames) {
+        if (f.isMounted()) f.unmount(this.scene);
+      }
+      return;
+    }
+
     // 1. Compute morph targets per frame.
     const targets = this.computeMorphTargets(secProgress);
     const now = performance.now();

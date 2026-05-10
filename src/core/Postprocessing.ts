@@ -45,6 +45,11 @@ export type QualityLevel = 'high' | 'medium' | 'low';
 
 const FPS_WINDOW_S = 5;
 const FPS_DOWNGRADE_THRESHOLD = 50;
+// Auto-upgrade from MEDIUM → HIGH if sustained ≥55fps over 3s.
+const FPS_UPGRADE_WINDOW_S = 3;
+const FPS_UPGRADE_THRESHOLD = 55;
+// Auto-downgrade from MEDIUM → LOW if sustained <40fps over 5s.
+const FPS_LOW_DOWNGRADE_THRESHOLD = 40;
 
 export class Postprocessing {
   private renderer: THREE.WebGLRenderer;
@@ -60,10 +65,13 @@ export class Postprocessing {
 
   private current: QualityLevel = 'low';
 
-  // FPS sampling for auto-downgrade
+  // FPS sampling for auto-downgrade / auto-upgrade.
   private fpsSamples: number[] = [];
   private fpsAccumDt = 0;
-  private downgraded = false;
+  /** True if user has manually overridden quality (or auto-downgrade fired). */
+  private manualOverride = false;
+  /** True once we've upgraded MEDIUM → HIGH automatically (don't re-upgrade). */
+  private autoUpgradedToHigh = false;
 
   // UI toggle
   private toggleBtn: HTMLButtonElement | null = null;
@@ -82,13 +90,20 @@ export class Postprocessing {
 
   init(): void {
     // Decide initial quality.
+    //
+    // Perf pass — desktop now defaults to MEDIUM (Bloom + ACES tonemap), not
+    // HIGH (Bloom + chromatic aberration + noise + ACES). The full HIGH
+    // pipeline costs ~3-4ms extra per frame on integrated GPUs and was the
+    // single biggest contributor to "page feels laggy" at boot. We auto-
+    // upgrade to HIGH after sustained ≥55fps for 3s if the device can clearly
+    // handle it.
     let initial: QualityLevel;
     if (this.prefs.qualityOverride) {
       initial = this.prefs.qualityOverride;
     } else if (this.prefs.isMobile || this.prefs.reducedMotion) {
       initial = 'low';
     } else {
-      initial = 'high';
+      initial = 'medium';
     }
     this.setQuality(initial);
     this.injectToggle();
@@ -191,31 +206,56 @@ export class Postprocessing {
     } else {
       this.composer.render(dt);
     }
-    // Auto-downgrade detection — only when not user-overridden and currently HIGH.
+    // Auto quality detection. Skipped when:
+    //  - prefs override forces a specific level
+    //  - user manually clicked the toggle (sticky from then on)
+    //  - dt is bogus (paused tab returning)
     if (
-      !this.downgraded &&
-      this.current === 'high' &&
+      !this.manualOverride &&
       !this.prefs.qualityOverride &&
       dt > 0
     ) {
       const fps = 1 / dt;
       this.fpsSamples.push(fps);
       this.fpsAccumDt += dt;
-      // Cap sample buffer size.
       if (this.fpsSamples.length > 600) this.fpsSamples.shift();
-      if (this.fpsAccumDt >= FPS_WINDOW_S) {
+
+      // Window varies by direction we're testing (3s for upgrade, 5s for downgrade).
+      const window =
+        this.current === 'medium' && !this.autoUpgradedToHigh
+          ? FPS_UPGRADE_WINDOW_S
+          : FPS_WINDOW_S;
+      if (this.fpsAccumDt >= window) {
         const avg = this.fpsSamples.reduce((a, b) => a + b, 0) / this.fpsSamples.length;
-        if (avg < FPS_DOWNGRADE_THRESHOLD) {
-          this.downgraded = true;
+
+        if (this.current === 'high' && avg < FPS_DOWNGRADE_THRESHOLD) {
+          // HIGH → MEDIUM (legacy path, for users who flipped to HIGH manually
+          // before the rule fired, or for the upgrade-then-can't-sustain case).
+          this.manualOverride = true;
           // eslint-disable-next-line no-console
-          console.log(`[postprocessing] auto-downgrade to MEDIUM (avg fps ${avg.toFixed(1)})`);
+          console.log(`[postprocessing] auto-downgrade HIGH→MEDIUM (avg fps ${avg.toFixed(1)})`);
           this.setQuality('medium');
+        } else if (this.current === 'medium' && avg < FPS_LOW_DOWNGRADE_THRESHOLD) {
+          // MEDIUM → LOW when sustained <40fps over 5s.
+          this.manualOverride = true;
+          // eslint-disable-next-line no-console
+          console.log(`[postprocessing] auto-downgrade MEDIUM→LOW (avg fps ${avg.toFixed(1)})`);
+          this.setQuality('low');
+        } else if (
+          this.current === 'medium' &&
+          !this.autoUpgradedToHigh &&
+          avg >= FPS_UPGRADE_THRESHOLD
+        ) {
+          // MEDIUM → HIGH after sustained ≥55fps for 3s.
+          this.autoUpgradedToHigh = true;
+          // eslint-disable-next-line no-console
+          console.log(`[postprocessing] auto-upgrade MEDIUM→HIGH (avg fps ${avg.toFixed(1)})`);
+          this.setQuality('high');
         }
-        // Reset for next observation window — but only if we didn't downgrade.
-        if (!this.downgraded) {
-          this.fpsSamples = [];
-          this.fpsAccumDt = 0;
-        }
+
+        // Reset window for next observation.
+        this.fpsSamples = [];
+        this.fpsAccumDt = 0;
       }
     }
   }
@@ -264,8 +304,8 @@ export class Postprocessing {
     btn.addEventListener('click', () => {
       const next: QualityLevel =
         this.current === 'high' ? 'medium' : this.current === 'medium' ? 'low' : 'high';
-      // Manual toggle disables auto-downgrade.
-      this.downgraded = true;
+      // Manual toggle disables auto quality decisions for the rest of the session.
+      this.manualOverride = true;
       this.setQuality(next);
     });
     document.body.appendChild(btn);

@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import type { SceneModule } from './SceneManager';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
+import type { ScrollManager } from '@core/ScrollManager';
 import { damp, lerp, clamp } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
 import { buildDimpleNormalMap, buildGolfBallMaterial } from './shared/golfBall';
@@ -118,6 +119,9 @@ export class HeroScene implements SceneModule {
 
   private readonly camera: THREE.PerspectiveCamera;
   private readonly physics: PhysicsWorld;
+  private readonly scrollManager: ScrollManager;
+  /** Frame counter for cheap rate-limiting (rect reads). */
+  private frame = 0;
 
   // Three objects
   private ballMesh!: THREE.Mesh;
@@ -160,6 +164,14 @@ export class HeroScene implements SceneModule {
   private tmpVec3 = new THREE.Vector3();
   private tmpVec3b = new THREE.Vector3();
 
+  // Cached anchor positions — recomputed every other frame from DOM (the
+  // .sphere bobs slightly via CSS animation, so we can't fully cache-on-scroll
+  // like Work/Pursuits without visible drift).
+  private cachedHome = new THREE.Vector3();
+  private cachedStagePos = new THREE.Vector3();
+  private cachedStageSize = { width: 0, height: 0 };
+  private hasCachedAnchors = false;
+
   // Bound listeners (for clean dispose)
   private onMouseMove = (e: MouseEvent): void => {
     this.mouseScreen.x = e.clientX;
@@ -174,10 +186,12 @@ export class HeroScene implements SceneModule {
     camera: THREE.PerspectiveCamera,
     physics: PhysicsWorld,
     /** Reserved for future canvas-relative event wiring (touch, pointer-lock). */
-    _canvasEl: HTMLCanvasElement
+    _canvasEl: HTMLCanvasElement,
+    scrollManager: ScrollManager
   ) {
     this.camera = camera;
     this.physics = physics;
+    this.scrollManager = scrollManager;
     void _canvasEl;
   }
 
@@ -325,15 +339,31 @@ export class HeroScene implements SceneModule {
   update(dt: number): void {
     if (this.paused || !this.sphereEl || !this.stageEl) return;
 
-    // 1. Recompute home position from the .sphere DOM box. This is what makes
-    //    resize-driven layout shifts move the ball with the HTML — the playbook
-    //    explicitly tests this in acceptance criterion #9.
-    elementToWorld(this.sphereEl, this.camera, HERO_DEPTH, this.home);
+    // Perf gate: hero is always at the top of the document. Once the user
+    // scrolls past the first ~15% of total page progress, the hero region is
+    // off-screen and we can stop ticking entirely. We use the cheaper global
+    // scrollProgress (no rect read) instead of sectionProgress('hero').
+    if (this.scrollManager.scrollProgress > 0.15) return;
+
+    this.frame++;
+
+    // 1. Recompute home + stage position from DOM. The .sphere has CSS bob
+    //    animation so we can't pure-cache-on-scroll like Work/Pursuits do, but
+    //    rate-limiting to every-other-frame halves the cost without visible
+    //    drift (the bob period is ~6s; a single skipped frame is invisible).
+    if (!this.hasCachedAnchors || this.frame % 2 === 0) {
+      elementToWorld(this.sphereEl, this.camera, HERO_DEPTH, this.cachedHome);
+      elementToWorld(this.stageEl, this.camera, HERO_DEPTH, this.cachedStagePos);
+      const sz = elementToWorldSize(this.stageEl, this.camera, HERO_DEPTH);
+      this.cachedStageSize.width = sz.width;
+      this.cachedStageSize.height = sz.height;
+      this.hasCachedAnchors = true;
+    }
+    this.home.copy(this.cachedHome);
 
     // 2. Position the stencil mask at .sphere-stage's bounding box.
-    elementToWorld(this.stageEl, this.camera, HERO_DEPTH, this.tmpVec3);
-    const stageWorldSize = elementToWorldSize(this.stageEl, this.camera, HERO_DEPTH);
-    this.maskMesh.position.copy(this.tmpVec3);
+    this.maskMesh.position.copy(this.cachedStagePos);
+    const stageWorldSize = this.cachedStageSize;
     this.maskMesh.scale.set(stageWorldSize.width, stageWorldSize.height, 1);
 
     // 3. Mobile path — just rotate slowly and bail. No physics, no stat updates.

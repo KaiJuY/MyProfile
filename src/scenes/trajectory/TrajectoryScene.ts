@@ -93,6 +93,12 @@ export class TrajectoryScene implements SceneModule {
   private tmpPos = new THREE.Vector3();
   private tmpAhead = new THREE.Vector3();
 
+  /** Frame counter — used to throttle the HUD textContent writes. */
+  private frame = 0;
+  /** True after the post-section damper has fully snapped the camera back to
+   *  default. Used to skip the dampers entirely on subsequent frames. */
+  private cameraSettled = false;
+
   constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
     this.scrollManager = scrollManager;
@@ -166,8 +172,17 @@ export class TrajectoryScene implements SceneModule {
   }
 
   update(dt: number): void {
+    this.frame++;
     const sp = this.scrollManager.sectionProgress(SECTION_ID);
     const inSection = sp > 0.001 && sp < 0.999;
+
+    // Perf gate: when we're far from the section AND the camera+HUD have
+    // already settled to default, skip the entire update body. This avoids
+    // running the dampers + HUD update + tl-item DOM writes every frame
+    // forever after the user passes Trajectory.
+    if (!inSection && this.cameraSettled && !this.mounted) {
+      return;
+    }
 
     // Visibility — when not in section, unmount and reset HTML fades.
     if (!inSection) {
@@ -183,10 +198,12 @@ export class TrajectoryScene implements SceneModule {
       this.lookAtTarget.z = damp(this.lookAtTarget.z, DEFAULT_CAMERA_LOOKAT.z, LOOKAT_DAMP_LAMBDA, dt);
 
       // Snap when close enough — avoids floating-point rounding error
-      // accumulating across the rest of the page.
+      // accumulating across the rest of the page. Once snapped, set the
+      // settled flag so future frames can skip this whole branch.
       if (this.cameraPos.distanceToSquared(DEFAULT_CAMERA_POSITION) < 1e-4) {
         this.cameraPos.copy(DEFAULT_CAMERA_POSITION);
         this.lookAtTarget.copy(DEFAULT_CAMERA_LOOKAT);
+        this.cameraSettled = true;
       }
       this.camera.position.copy(this.cameraPos);
       this.camera.lookAt(this.lookAtTarget);
@@ -206,12 +223,16 @@ export class TrajectoryScene implements SceneModule {
       }
 
       // HUD updated to reflect "outside section" — opacity drives off
-      // sectionProgress so it'll be 0 here.
-      this.hud.update(0, sp, 0);
+      // sectionProgress so it'll be 0 here. Throttle (only updates DOM
+      // textContent + a width %; nothing visual at month resolution moves
+      // faster than 15Hz needs).
+      if (this.frame % 4 === 0) this.hud.update(0, sp, 0);
       return;
     }
 
-    // Inside the section: mount visuals.
+    // Inside the section: mount visuals (re-arms the settled flag for the
+    // next post-section pass).
+    this.cameraSettled = false;
     this.mount();
 
     // Compute the target path point and look-ahead point.
@@ -301,8 +322,10 @@ export class TrajectoryScene implements SceneModule {
     }
 
     // Update HUD. Pass the actual smoothed camera Z so DEPTH reads stay in
-    // lockstep with what's on screen.
-    this.hud.update(pathT, sp, this.cameraPos.z);
+    // lockstep with what's on screen. Throttle to 15Hz — DEPTH/STEP/POS
+    // values only change at month resolution; the bar width has a CSS
+    // 80ms transition so 4-frame quantization is invisible.
+    if (this.frame % 4 === 0) this.hud.update(pathT, sp, this.cameraPos.z);
   }
 
   dispose(scene: THREE.Scene): void {

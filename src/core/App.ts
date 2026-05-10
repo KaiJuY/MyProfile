@@ -115,7 +115,12 @@ export class App {
 
     // 2. Register scenes — tick the BUILD SCENES weighted bar per scene.
     await this.sceneManager.register(
-      new HeroScene(this.camera.three, this.physics, this.renderer.three.domElement)
+      new HeroScene(
+        this.camera.three,
+        this.physics,
+        this.renderer.three.domElement,
+        this.scrollManager
+      )
     );
     this.loader.tick('scenes');
 
@@ -124,10 +129,14 @@ export class App {
     );
     this.loader.tick('scenes');
 
-    await this.sceneManager.register(new WorkScene(this.camera.three));
+    await this.sceneManager.register(
+      new WorkScene(this.camera.three, this.scrollManager)
+    );
     this.loader.tick('scenes');
 
-    await this.sceneManager.register(new ToolkitScene(this.camera.three, this.physics));
+    await this.sceneManager.register(
+      new ToolkitScene(this.camera.three, this.physics, this.scrollManager)
+    );
     this.loader.tick('scenes');
 
     await this.sceneManager.register(
@@ -160,7 +169,13 @@ export class App {
     const loop = (nowMs: number): void => {
       if (!this.running) return;
       const dt = this.clock.tick(nowMs);
-      this.physics.step(dt);
+      // Perf gate: physics is only needed when a physics-using scene is in
+      // viewport. Hero is always at the top (scrollProgress < 0.15), Toolkit
+      // owns #bag, Contact owns #contact (drop animation is gsap-driven but
+      // also touches Rapier kinematic bodies during play).
+      if (this.shouldStepPhysics()) {
+        this.physics.step(dt);
+      }
       this.sceneManager.update(dt, this.scrollManager.scrollProgress);
       this.postprocessing.render(dt);
       this.qualityLevel = this.postprocessing.getQuality();
@@ -168,6 +183,24 @@ export class App {
       this.rafHandle = requestAnimationFrame(loop);
     };
     this.rafHandle = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Decide whether to advance physics this frame. We avoid stepping when no
+   * physics consumer is in or near viewport — Rapier's world.step() is a
+   * non-trivial cost even with zero contacts (constraint solver, broad-phase,
+   * island bookkeeping).
+   */
+  private shouldStepPhysics(): boolean {
+    // Hero region (always at top of doc).
+    if (this.scrollManager.scrollProgress < 0.15) return true;
+    // Toolkit: active range with hysteresis [-0.15, 1.15].
+    const bag = this.scrollManager.sectionProgress('bag');
+    if (bag > -0.15 && bag < 1.15 && bag > 0) return true;
+    // Contact: only when section is engaged enough to play the drop.
+    const contact = this.scrollManager.sectionProgress('contact');
+    if (contact > 0 && contact < 1.15) return true;
+    return false;
   }
 
   stop(): void {

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { SceneModule } from '../SceneManager';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
+import type { ScrollManager } from '@core/ScrollManager';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import { clamp } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
@@ -125,7 +126,10 @@ export class ToolkitScene implements SceneModule {
 
   private readonly camera: THREE.PerspectiveCamera;
   private readonly physics: PhysicsWorld;
+  private readonly scrollManager: ScrollManager;
   private scene!: THREE.Scene;
+  /** Frame counter — used to throttle the per-skill MSDF label billboard. */
+  private frame = 0;
 
   // DOM anchors
   private sectionEl: HTMLElement | null = null;
@@ -170,9 +174,14 @@ export class ToolkitScene implements SceneModule {
     this.lastMouseT = performance.now();
   };
 
-  constructor(camera: THREE.PerspectiveCamera, physics: PhysicsWorld) {
+  constructor(
+    camera: THREE.PerspectiveCamera,
+    physics: PhysicsWorld,
+    scrollManager: ScrollManager
+  ) {
     this.camera = camera;
     this.physics = physics;
+    this.scrollManager = scrollManager;
   }
 
   init(scene: THREE.Scene): void {
@@ -278,6 +287,27 @@ export class ToolkitScene implements SceneModule {
 
   update(dt: number): void {
     if (!this.sectionEl || !this.listEl || this.skills.length === 0) return;
+
+    this.frame++;
+
+    // Perf gate with hysteresis: skip ALL toolkit work (anchor, physics, label
+    // billboard) when #bag is far off-screen. The earlier `onScreen` check
+    // below uses ±0.5*vh window which still ran the anchor reads + lights
+    // unmount — we now bail much earlier so even those costs vanish.
+    const sectionT = this.scrollManager.sectionProgress('bag');
+    if (sectionT < -0.15 || sectionT > 1.15) {
+      // Defensive cleanup if user jumped past the section.
+      if (this.window) this.window.hide();
+      for (const s of this.skills) {
+        s.mesh.visible = false;
+        s.label.visible = false;
+      }
+      this.unmountLights();
+      if (this.cursorBody) {
+        this.cursorBody.setNextKinematicTranslation({ x: -1e4, y: -1e4, z: -1e4 });
+      }
+      return;
+    }
 
     // 1. Anchor sandbox to .bag-list bounding rect.
     elementToWorld(this.listEl, this.camera, TOOLKIT_DEPTH, this.sandCenter);
@@ -505,8 +535,11 @@ export class ToolkitScene implements SceneModule {
     }
 
     // 9. Sync mesh + label transforms from physics bodies.
+    //    Label yaw billboard is throttled to every other frame (camera barely
+    //    moves in #bag so the visual difference is imperceptible).
+    const updateLabelYaw = this.frame % 2 === 0;
     for (const s of this.skills) {
-      s.syncFromBody(this.camera);
+      s.syncFromBody(this.camera, updateLabelYaw);
     }
 
   }

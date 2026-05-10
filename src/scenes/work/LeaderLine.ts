@@ -49,17 +49,27 @@ interface LeaderEntry {
   hasDrawnIn: boolean;
 }
 
+/**
+ * Optional rect provider — WorkScene already caches per-card rects (refreshed
+ * on scroll/resize), so LeaderLineManager reuses that cache to avoid a second
+ * round of getBoundingClientRect() calls (~7 per frame at 60Hz × forced
+ * layout flush each = real cost on a busy page).
+ */
+export type RectProvider = (htmlEl: HTMLElement) => DOMRect | null;
+
 export class LeaderLineManager {
   private svg: SVGSVGElement;
   private camera: THREE.PerspectiveCamera;
   private leaders: Map<string, LeaderEntry> = new Map();
   private accentColor: string;
+  private rectProvider: RectProvider | null = null;
   // Reusable scratch — one allocation total, mutated each frame.
   private worldScratch = new THREE.Vector3();
   private projectScratch = new THREE.Vector3();
 
-  constructor(camera: THREE.PerspectiveCamera) {
+  constructor(camera: THREE.PerspectiveCamera, rectProvider: RectProvider | null = null) {
     this.camera = camera;
+    this.rectProvider = rectProvider;
 
     // Read the brand accent so leader hover state can echo it later. For now
     // we render leaders in a low-contrast gray (matches "industrial schematic"
@@ -174,7 +184,10 @@ export class LeaderLineManager {
     const vh = window.innerHeight;
     for (const e of this.leaders.values()) {
       if (e.path.style.display === 'none') continue;
-      const rect = e.htmlEl.getBoundingClientRect();
+      // Prefer cached rect from the WorkScene-owned cache (refreshed on
+      // scroll/resize). Fall back to a live getBoundingClientRect() if the
+      // cache hasn't populated yet (first frame after register).
+      const rect = (this.rectProvider && this.rectProvider(e.htmlEl)) ?? e.htmlEl.getBoundingClientRect();
       // HTML anchor: right edge midpoint of the project card.
       const startX = rect.right;
       const startY = rect.top + rect.height / 2;

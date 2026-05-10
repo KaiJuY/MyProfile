@@ -201,8 +201,13 @@ export class SkillObject {
 
   /**
    * Sync mesh + label from physics body each frame. Called by ToolkitScene.
+   * @param updateLabelRotation when false, skip the (relatively expensive)
+   *   yaw recompute. Camera barely moves between frames in #bag (only a tiny
+   *   ContactScene tilt much later in the page), so updating yaw at half-rate
+   *   is visually identical and cuts the per-skill cost in half on the
+   *   throttled frames.
    */
-  syncFromBody(camera: THREE.PerspectiveCamera): void {
+  syncFromBody(camera: THREE.PerspectiveCamera, updateLabelRotation: boolean = true): void {
     if (!this.body) return;
     const t = this.body.translation();
     const r = this.body.rotation();
@@ -212,6 +217,8 @@ export class SkillObject {
     // Label: above the body, billboard around Y to face camera. (Per playbook
     // §7: text always faces camera so it's readable.)
     this.label.position.set(t.x, t.y + 0.85, t.z);
+
+    if (!updateLabelRotation) return;
 
     // Y-only billboard: compute yaw from camera direction, ignore pitch.
     this.tmp.subVectors(camera.position, this.label.position);

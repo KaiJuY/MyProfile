@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { SceneModule } from '../SceneManager';
+import type { ScrollManager } from '@core/ScrollManager';
 import { elementToWorldSize } from '@core/ScreenToWorld';
 import type { WorkObject } from './WorkObject';
 import { LeaderLineManager } from './LeaderLine';
@@ -48,6 +49,8 @@ interface CardEntry {
   lastInWindowMs: number;
   /** Current opacity-driving scrollProgress (smoothed). */
   cardLocalScroll: number;
+  /** Cached bounding rect — refreshed on scroll/resize, not per-frame. */
+  cachedRect: DOMRect | null;
 }
 
 function isMobileViewport(): boolean {
@@ -85,10 +88,15 @@ export class WorkScene implements SceneModule {
   readonly name = 'work';
 
   private readonly camera: THREE.PerspectiveCamera;
+  private readonly scrollManager: ScrollManager;
   private scene!: THREE.Scene;
   private cards: CardEntry[] = [];
   private leaderManager?: LeaderLineManager;
   private mobileMode = false;
+  /** Rect-cache invalidation: bumped on scroll/resize, snapshotted in update. */
+  private rectsDirty = true;
+  private unsubScroll: (() => void) | null = null;
+  private onResize = (): void => { this.rectsDirty = true; };
 
   // Shared lighting — added/removed when ANY card is mounted to keep the
   // light count low when the section is off-screen.
@@ -99,8 +107,9 @@ export class WorkScene implements SceneModule {
   // Reusable scratch.
   private tmpVec3 = new THREE.Vector3();
 
-  constructor(camera: THREE.PerspectiveCamera) {
+  constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
+    this.scrollManager = scrollManager;
   }
 
   init(scene: THREE.Scene): void {
@@ -133,8 +142,16 @@ export class WorkScene implements SceneModule {
         obj,
         lastInWindowMs: 0,
         cardLocalScroll: 0,
+        cachedRect: null,
       });
     }
+
+    // Invalidate cached rects on scroll + resize. We don't need to recompute
+    // synchronously inside the listener — the next update() frame picks up the
+    // dirty flag and re-reads rects in a single batch (cheaper than reading
+    // 7 rects mid-scroll-handler).
+    this.unsubScroll = this.scrollManager.onUpdate(() => { this.rectsDirty = true; });
+    window.addEventListener('resize', this.onResize, { passive: true });
 
     // Lighting — created here, mounted lazily once a card mounts.
     // Both lights are intentionally bright (Lusion-style WebGL renders against
@@ -144,8 +161,15 @@ export class WorkScene implements SceneModule {
     this.directional = new THREE.DirectionalLight(0xffffff, 1.20);
     this.directional.position.set(2, 3, 4);
 
-    // Leader manager.
-    this.leaderManager = new LeaderLineManager(this.camera);
+    // Leader manager — pass a rect provider so it shares our cache instead of
+    // calling getBoundingClientRect() on every leader every frame.
+    const rectProvider = (htmlEl: HTMLElement): DOMRect | null => {
+      for (const c of this.cards) {
+        if (c.el === htmlEl) return c.cachedRect;
+      }
+      return null;
+    };
+    this.leaderManager = new LeaderLineManager(this.camera, rectProvider);
     for (const card of this.cards) {
       const captured = card; // close over this entry, not the loop var
       this.leaderManager.register(`prj-${card.pid}`, card.el, (out) =>
@@ -191,13 +215,43 @@ export class WorkScene implements SceneModule {
       return;
     }
 
+    // Perf gate: skip when #projects section is far off screen (with hysteresis).
+    const sectionT = this.scrollManager.sectionProgress('projects');
+    if (sectionT < -0.15 || sectionT > 1.15) {
+      // Make sure mounted objects are torn down (UNMOUNT_DELAY_MS path) when
+      // we leave for real. Cheap check — most frames return immediately.
+      const now0 = performance.now();
+      let anyStillMounted = false;
+      for (const card of this.cards) {
+        if (card.obj.isMounted() && now0 - card.lastInWindowMs > UNMOUNT_DELAY_MS) {
+          card.obj.unmount(this.scene);
+          this.leaderManager.setVisible(`prj-${card.pid}`, false);
+        } else if (card.obj.isMounted()) {
+          anyStillMounted = true;
+        }
+      }
+      if (!anyStillMounted) this.unmountLights();
+      return;
+    }
+
     const vh = window.innerHeight;
     const vw = window.innerWidth;
     const now = performance.now();
     let anyMounted = false;
 
+    // Refresh rect cache once per scroll/resize (rectsDirty flag), not per
+    // card per frame. This collapses 7 getBoundingClientRect() calls per frame
+    // (each one a forced layout-flush trigger) down to 7 calls per scroll
+    // event — a 60×+ reduction at 60fps.
+    if (this.rectsDirty) {
+      for (const card of this.cards) {
+        card.cachedRect = card.el.getBoundingClientRect();
+      }
+      this.rectsDirty = false;
+    }
+
     for (const card of this.cards) {
-      const rect = card.el.getBoundingClientRect();
+      const rect = card.cachedRect ?? card.el.getBoundingClientRect();
 
       // Preload window: mount when card is within ±PRELOAD_VH of viewport.
       // "Within": rect.top < vh + PRELOAD_VH (card within a screen below) AND
@@ -306,6 +360,11 @@ export class WorkScene implements SceneModule {
   }
 
   dispose(scene: THREE.Scene): void {
+    if (this.unsubScroll) {
+      this.unsubScroll();
+      this.unsubScroll = null;
+    }
+    window.removeEventListener('resize', this.onResize);
     if (this.leaderManager) {
       this.leaderManager.dispose();
       this.leaderManager = undefined;
