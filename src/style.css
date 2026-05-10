@@ -81,16 +81,7 @@ body {
 /* SVG trajectory trail injected by HeroScene (.hero-trail-svg) — no rules
  * needed here; HeroScene styles inline. Listed for grep visibility. */
 
-/* Step 04 — Work section leader-line overlay.
- *
- * Created by LeaderLineManager on init; full-viewport fixed SVG that draws a
- * dashed connector from each project card's right edge to its 3D companion.
- * Inline styles cover layout; this rule is additive (mobile suppression so
- * the overlay never paints on phones, where there's no 3D companion). */
-.work-leader-svg {
-  /* Default state set inline by LeaderLineManager; nothing to add desktop-side. */
-}
-@media (max-width: 767px), (pointer: coarse) {
-  .work-leader-svg { display: none !important; }
-}
+/* Step 04 work-leader-svg overlay was removed in wave-04 alongside the per-
+ * project 3D companions. WorkScene now renders only subtle accent-particle
+ * hints on .project[data-href] cards via WebGL — no DOM/SVG overlay needed. */
 

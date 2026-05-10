@@ -33,7 +33,7 @@ interface LoaderStep {
   label: string;
   done: boolean;
   /**
-   * Steps with weight > 1 represent multi-stage progress (e.g. 6 scenes).
+   * Steps with weight > 1 represent multi-stage progress (e.g. 5 scenes).
    * `progress` increments by 1 each tick until == weight, at which point the
    * step is considered done.
    */
@@ -55,7 +55,7 @@ export class Loader {
     { key: 'matcap',  label: 'LOAD MATCAP TEXTURE', done: false, weight: 1, progress: 0 },
     { key: 'physics', label: 'INIT PHYSICS WORLD', done: false, weight: 1, progress: 0 },
     { key: 'shaders', label: 'COMPILE SHADERS', done: false, weight: 1, progress: 0 },
-    { key: 'scenes',  label: 'BUILD SCENES', done: false, weight: 6, progress: 0 },
+    { key: 'scenes',  label: 'BUILD SCENES', done: false, weight: 5, progress: 0 },
   ];
 
   private dismissed = false;

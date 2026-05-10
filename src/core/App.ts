@@ -7,7 +7,6 @@ import { SceneManager } from '@scenes/SceneManager';
 import { HeroScene } from '@scenes/HeroScene';
 import { PursuitsScene } from '@scenes/pursuits/PursuitsScene';
 import { WorkScene } from '@scenes/work/WorkScene';
-import { ToolkitScene } from '@scenes/toolkit/ToolkitScene';
 import { TrajectoryScene } from '@scenes/trajectory/TrajectoryScene';
 import { ContactScene } from '@scenes/contact/ContactScene';
 import { disposeSharedGolfBallAssets } from '@scenes/shared/golfBall';
@@ -136,11 +135,6 @@ export class App {
     this.loader.tick('scenes');
 
     await this.sceneManager.register(
-      new ToolkitScene(this.camera.three, this.physics, this.scrollManager)
-    );
-    this.loader.tick('scenes');
-
-    await this.sceneManager.register(
       new TrajectoryScene(this.camera.three, this.scrollManager)
     );
     this.loader.tick('scenes');
@@ -171,9 +165,10 @@ export class App {
       if (!this.running) return;
       const dt = this.clock.tick(nowMs);
       // Perf gate: physics is only needed when a physics-using scene is in
-      // viewport. Hero is always at the top (scrollProgress < 0.15), Toolkit
-      // owns #bag, Contact owns #contact (drop animation is gsap-driven but
-      // also touches Rapier kinematic bodies during play).
+      // viewport. Hero is always at the top (scrollProgress < 0.15), Contact
+      // owns #contact (drop animation is gsap-driven but also touches Rapier
+      // kinematic bodies during play). The Toolkit physics sandbox was removed
+      // in wave-04, so #bag no longer needs physics stepping.
       if (this.shouldStepPhysics()) {
         this.physics.step(dt);
       }
@@ -195,9 +190,6 @@ export class App {
   private shouldStepPhysics(): boolean {
     // Hero region (always at top of doc).
     if (this.scrollManager.scrollProgress < 0.15) return true;
-    // Toolkit: active range with hysteresis [-0.15, 1.15].
-    const bag = this.scrollManager.sectionProgress('bag');
-    if (bag > -0.15 && bag < 1.15 && bag > 0) return true;
     // Contact: only when section is engaged enough to play the drop.
     const contact = this.scrollManager.sectionProgress('contact');
     if (contact > 0 && contact < 1.15) return true;
