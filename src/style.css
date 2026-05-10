@@ -85,3 +85,37 @@ body {
  * project 3D companions. WorkScene now renders only subtle accent-particle
  * hints on .project[data-href] cards via WebGL — no DOM/SVG overlay needed. */
 
+/* Wave 5 — Flythrough section.
+ *
+ * FlythroughScene tracks the screen positions of `#flyBall` (the CSS-animated
+ * ball wrapper) and `#tee` each frame and renders the GLB ball + tee meshes
+ * over them. The original CSS visuals (the inner `.fly-ball` div with
+ * `ball.svg` background, and the `.tee` div with `tee.svg` background +
+ * drop-shadow) MUST stay laid out so `getBoundingClientRect()` keeps returning
+ * the animated rects — but their visible appearance has to vanish so the
+ * WebGL meshes don't double up with the SVG flats.
+ *
+ * Gated on `.flythrough-3d` (set by FlythroughScene only when it actually
+ * mounts WebGL meshes — i.e. NOT on mobile / reduced-motion). On those code
+ * paths the CSS ball + tee stay visible so the section still has a hero
+ * subject.
+ *
+ * Hide the inner `.fly-ball` div (background image is on the inner div, not
+ * the wrapper). Use `visibility: hidden` so the wrapper still measures.
+ *
+ * Strip the `.tee` div's background image, drop-shadow, and the `::before`
+ * grounding-glow — but keep the box laid out (so the wrapper rect still
+ * reports the right anchor for the WebGL tee mesh). */
+.flythrough-3d #flyBall .fly-ball {
+  visibility: hidden;
+}
+.flythrough-3d .tee {
+  background: transparent;
+  filter: none;
+  opacity: 1;
+}
+.flythrough-3d .tee::before {
+  display: none;
+}
+
+

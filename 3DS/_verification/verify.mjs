@@ -41,9 +41,13 @@ async function main() {
       page.on('console', (m) => consoleLogs.push(`[${vp.name}/${m.type()}] ${m.text()}`));
       page.on('pageerror', (e) => errors.push(`[${vp.name}/error] ${e.message}`));
 
-      await page.goto(URL, { waitUntil: 'networkidle0', timeout: 20000 });
+      // Use 'load' (not 'networkidle0') — the 24MB golf_ball.glb makes the
+      // network "idle" check unreliable on slower machines. We wait
+      // explicitly for `window.app` below, which is a stronger signal that
+      // boot finished anyway.
+      await page.goto(URL, { waitUntil: 'load', timeout: 30000 });
       // wait for window.app to exist (means main.ts boot finished)
-      await page.waitForFunction(() => Boolean((globalThis).app), { timeout: 10000 });
+      await page.waitForFunction(() => Boolean((globalThis).app), { timeout: 30000 });
       await new Promise((r) => setTimeout(r, 500)); // settle one extra RAF
 
       // scroll to flow target. Special syntax: "section@N" scrolls into a section
