@@ -161,6 +161,7 @@ export const GOLF_BALL_FRAG = /* glsl */ `
   uniform float     uRimStrength;
   uniform vec3      uRimColor;
   uniform float     uDimpleStrength;
+  uniform float     uMatcapSoftness;
   uniform float     uOpacity;
 
   varying vec3 vViewNormal;
@@ -172,17 +173,44 @@ export const GOLF_BALL_FRAG = /* glsl */ `
   }
 
   void main() {
-    vec3 n = vViewNormal;
+    // FrontSide: only forward-facing triangles render. Dimple back-walls
+    // are culled; the consuming scene adds an inner fill sphere to keep
+    // those small gaps from looking like holes through the ball.
+    vec3 baseN = vViewNormal;
+    vec3 n = baseN;
     if (uHasDimpleMap > 0.5) {
+      // Procedural-fallback path: tangent-space dimple map perturbs view normal.
       vec3 nT = unpackNormal(texture2D(uDimple, vUv).rgb);
-      n = normalize(vViewNormal + vec3(nT.x, nT.y, 0.0) * uDimpleStrength);
+      n = normalize(baseN + vec3(nT.x, nT.y, 0.0) * uDimpleStrength);
+    } else {
+      // GLB path: real geometric dimples produce steep sideways normals at
+      // dimple walls. Sampling the pearl matcap with those raw normals lands
+      // at the dark edge of the matcap LUT (or completely outside the disc,
+      // returning the texture's transparent/black corners), making each
+      // dimple read as a black pit — the ball looks "transparent / hollow"
+      // instead of the intended uniform white pearl. Soften by blending the
+      // geometry normal toward the camera-facing normal (0,0,1 in view
+      // space). uMatcapSoftness in [0,1]: 0 = full geometry detail; 1 =
+      // perfectly flat sphere.
+      vec3 cameraN = vec3(0.0, 0.0, 1.0);
+      n = normalize(mix(baseN, cameraN, uMatcapSoftness));
     }
 
-    vec2 matcapUv = n.xy * 0.5 + 0.5;
+    // Robust matcap UV (Three.js MeshMatcapMaterial formula). Compared to
+    // the simpler n.xy * 0.5 + 0.5, this builds a proper view-space
+    // tangent frame so the UV stays inside the matcap disc even when the
+    // normal points sideways. The 0.495 multiplier (vs 0.5) is the standard
+    // edge-bleed guard against sampling outside the texture's painted disc.
+    vec3 viewDir = normalize(vViewPosition);
+    vec3 xAxis = normalize(vec3(viewDir.z, 0.0, -viewDir.x));
+    vec3 yAxis = cross(viewDir, xAxis);
+    vec2 matcapUv = vec2(dot(xAxis, n), dot(yAxis, n)) * 0.495 + 0.5;
     vec3 matcap = texture2D(uMatcap, matcapUv).rgb;
 
-    vec3 viewDir = normalize(vViewPosition);
-    float fresnel = pow(1.0 - max(dot(viewDir, n), 0.0), 3.0);
+    // Fresnel rim uses the (face-corrected) geometry normal so the
+    // silhouette still reads as a sphere — softening only affects the
+    // matcap lookup.
+    float fresnel = pow(1.0 - max(dot(viewDir, baseN), 0.0), 3.0);
     vec3 rim = uRimColor * fresnel * uRimStrength;
 
     vec3 col = matcap + rim;
@@ -195,12 +223,18 @@ export const GOLF_BALL_FRAG = /* glsl */ `
 // -----------------------------------------------------------------------------
 
 export interface GolfBallMaterialOptions {
-  /** 0..1, fresnel rim term (default 0.35 — subtle). */
+  /** 0..1, fresnel rim term (default 0.45 — clean edge separation against dark backdrop). */
   rimStrength?: number;
   /** Rim tint color (default cool blue). */
   rimColor?: THREE.Color;
   /** 0..1, how strongly the dimple normal perturbs (default 0.55). */
   dimpleStrength?: number;
+  /**
+   * GLB-path-only knob: 0..1, blends the geometry normal toward the
+   * camera-facing normal before sampling the matcap. Higher = flatter pearl
+   * (no dark dimple cavities). Default 0.55. Ignored when `useDimpleMap=true`.
+   */
+  matcapSoftness?: number;
   /** Initial alpha (default 1.0). Use ShaderMaterial.uniforms.uOpacity to animate. */
   opacity?: number;
   /** Set to true if you want the ball to fade out — enables blending. */
@@ -253,22 +287,23 @@ export function buildGolfBallMaterial(
       uMatcap: { value: matcap },
       uDimple: { value: dimpleBinding },
       uHasDimpleMap: { value: useDimpleMap ? 1.0 : 0.0 },
-      uRimStrength: { value: opts.rimStrength ?? 0.35 },
+      uRimStrength: { value: opts.rimStrength ?? 0.45 },
       uRimColor: { value: opts.rimColor ?? new THREE.Color(0x9ec3d6) },
       uDimpleStrength: { value: opts.dimpleStrength ?? 0.55 },
+      uMatcapSoftness: { value: opts.matcapSoftness ?? 0.55 },
       uOpacity: { value: opts.opacity ?? 1.0 },
     },
     vertexShader: GOLF_BALL_VERT,
     fragmentShader: GOLF_BALL_FRAG,
     transparent: opts.transparent ?? false,
-    // DoubleSide: belt-and-suspenders for GLB ball geometry. Even though the
-    // closed-sphere picker selects a closed mesh, some Sketchfab / Blender
-    // exports have a handful of triangles with reversed winding inside an
-    // otherwise-closed shell. FrontSide rendering would make those triangles
-    // disappear and let you see THROUGH the ball at that angle. The source
-    // GLB authored these as DoubleSide for the same reason; matching that
-    // intent avoids the "transparent face" failure mode entirely.
-    side: THREE.DoubleSide,
+    // FrontSide is correct: DoubleSide doubles up dimple triangles which
+    // makes back-walls of dimples write over the front silhouette (visible
+    // as "hollow" black blotches). The matcap softening + an inner fill
+    // sphere added by the consuming scene combine to keep every fragment
+    // that survives FrontSide culling looking like uniform white pearl,
+    // and the inner sphere fills the small gaps the GLB's dimple-cavity
+    // back-walls leave behind.
+    side: THREE.FrontSide,
   });
   return mat;
 }
@@ -281,6 +316,11 @@ export interface GolfBallMeshResult {
   mesh: THREE.Mesh;
   material: THREE.ShaderMaterial;
   geometry: THREE.SphereGeometry;
+  /** GLB-only: the inner fill sphere's material — present when the result
+   *  comes from `buildGolfBallMeshFromGLB`. Caller may apply stencil to
+   *  match the outer material so the inner sphere doesn't bleed outside
+   *  any mask. Procedural builder returns undefined here. */
+  fillMaterial?: THREE.ShaderMaterial;
 }
 
 /**
@@ -469,12 +509,53 @@ export async function buildGolfBallMeshFromGLB(
   const useDimpleMap = options?.useDimpleMap ?? true;
   const dimple = useDimpleMap ? getSharedDimpleTexture() : null;
   const material = buildGolfBallMaterial(matcap, dimple, { ...options, useDimpleMap });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.frustumCulled = false;
-  // Cast for return-type compatibility with the procedural builder. Both
-  // consumers treat .geometry as opaque (just call dispose if they own it),
-  // and the GLB geometry is shared, so they should NOT dispose it.
-  return { mesh, material, geometry: geometry as unknown as THREE.SphereGeometry };
+  const dimpledMesh = new THREE.Mesh(geometry, material);
+  dimpledMesh.frustumCulled = false;
+
+  // ── Inner fill sphere ──────────────────────────────────────────────────
+  // The high-poly dimpled GLB has many triangles inside dimple cavities
+  // whose normals face away from the camera. With FrontSide rendering those
+  // triangles are culled, leaving small holes that read as "transparent" /
+  // "hollow" against the dark page backdrop (issue #1 from user feedback).
+  // Solving this with DoubleSide produces nasty back-face overdraw that
+  // overwrites the front-face matcap shading.
+  //
+  // Instead: nest a slightly smaller solid pearl-matcap sphere inside the
+  // dimpled shell. The dimpled mesh's culled holes now reveal the inner
+  // pearl sphere instead of the dark backdrop, so the ball reads as
+  // uniformly white from any angle. The 0.965× radius leaves enough room
+  // for the dimple geometry to still be visible as surface detail.
+  const fillGeom = new THREE.SphereGeometry(0.5 * 0.965, 64, 48);
+  const fillMaterial = buildGolfBallMaterial(matcap, null, {
+    ...options,
+    useDimpleMap: false,
+    // Push the inner sphere fully toward camera-facing matcap so it acts
+    // as a pure "white pearl" backdrop rather than its own shaded sphere.
+    matcapSoftness: 1.0,
+    rimStrength: 0.0,
+    transparent: false,
+  });
+  const fillMesh = new THREE.Mesh(fillGeom, fillMaterial);
+  fillMesh.frustumCulled = false;
+
+  const group = new THREE.Group();
+  // Inner sphere first (renderOrder lower so it draws underneath; depth test
+  // does the rest because it's slightly smaller).
+  fillMesh.renderOrder = -1;
+  group.add(fillMesh);
+  group.add(dimpledMesh);
+
+  // Cast group as a Mesh for backwards compat. Consumers (HeroScene,
+  // ContactScene) only read .position / .scale / .rotation / etc. — all
+  // present on Object3D / Group. They DO write to material's stencil + alpha
+  // uniforms; we keep `material` pointing at the OUTER dimpled mesh's
+  // material so those writes affect the visible silhouette.
+  return {
+    mesh: group as unknown as THREE.Mesh,
+    material,
+    geometry: geometry as unknown as THREE.SphereGeometry,
+    fillMaterial,
+  };
 }
 
 /**

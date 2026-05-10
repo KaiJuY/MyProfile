@@ -136,6 +136,8 @@ export class HeroScene implements SceneModule {
   private ballMesh!: THREE.Mesh;
   private maskMesh!: THREE.Mesh;
   private ballMaterial!: THREE.ShaderMaterial;
+  /** Inner fill sphere material (GLB-only). Free at dispose. */
+  private ballFillMaterial: THREE.ShaderMaterial | null = null;
   private matcapTex?: THREE.Texture;
 
   // DOM references
@@ -264,12 +266,17 @@ export class HeroScene implements SceneModule {
     //    centers + scales the geometry so its bounding-sphere radius is 0.5,
     //    matching BALL_RADIUS for the existing physics collider + stencil sizing.
     const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
-      rimStrength: 0.35,                       // subtle, matches "monochrome restraint"
+      rimStrength: 0.45,                       // bumped from 0.35 for cleaner
+                                               // silhouette against dark backdrop
       rimColor: new THREE.Color(0x9ec3d6),     // cool-blue rim, very faint
       // The new GLB has real dimple geometry (~1.3M tris). Drop the procedural
       // normal-map perturbation so the matcap pattern follows the actual mesh
       // normals, not a flat-sphere illusion.
       useDimpleMap: false,
+      // Soften the matcap lookup toward camera-facing so the deep dimple
+      // cavities don't sample the dark edge of the pearl LUT (which used to
+      // make the ball read as "hollow / transparent" — issue #1 from user).
+      matcapSoftness: 0.55,
     });
     this.ballMesh = built.mesh;
     this.ballMaterial = built.material;
@@ -280,6 +287,15 @@ export class HeroScene implements SceneModule {
     this.ballMaterial.stencilFunc = THREE.EqualStencilFunc;
     this.ballMaterial.stencilRef = 1;
     this.ballMaterial.stencilZPass = THREE.KeepStencilOp;
+    // The GLB builder also returns an inner fill sphere material — apply the
+    // same stencil so the white pearl filler stays inside the rounded-rect.
+    if (built.fillMaterial) {
+      built.fillMaterial.stencilWrite = true;
+      built.fillMaterial.stencilFunc = THREE.EqualStencilFunc;
+      built.fillMaterial.stencilRef = 1;
+      built.fillMaterial.stencilZPass = THREE.KeepStencilOp;
+      this.ballFillMaterial = built.fillMaterial;
+    }
 
     this.ballMesh.renderOrder = 2; // after mask
     this.ballMesh.frustumCulled = false; // bbox can be unreliable when we move it via physics
@@ -713,6 +729,7 @@ export class HeroScene implements SceneModule {
       (this.maskMesh.material as THREE.Material).dispose();
     }
     if (this.ballMaterial) this.ballMaterial.dispose();
+    if (this.ballFillMaterial) this.ballFillMaterial.dispose();
     if (this.matcapTex) this.matcapTex.dispose();
     document.documentElement.classList.remove('webgl-ready');
   }

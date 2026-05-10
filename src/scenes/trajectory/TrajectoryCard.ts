@@ -210,11 +210,16 @@ export class TrajectoryCard {
   update(activeIndex: number, sectionProgress: number): void {
     if (!this.enabled) return;
 
-    // Visibility envelope — match the HUD's band so card + HUD appear/disappear
-    // together. Outside the band, snap to opacity 0 and skip the rest.
+    // Visibility envelope — issue #3 fix. Previously [0.02, 0.97]: the card
+    // was visible while the user still saw 90% of the Bag section above
+    // because career section is 220vh tall; sectionProgress is non-zero from
+    // the moment the section's top crosses the viewport bottom. Move start
+    // band to ~0.32 so the card only fades in once career FILLS the viewport.
     let targetOpacity = 0;
-    if (sectionProgress >= 0.02 && sectionProgress <= 0.97 && activeIndex >= 0) {
-      const fadeIn = saturate((sectionProgress - 0.02) / 0.04);
+    if (sectionProgress >= 0.32 && sectionProgress <= 0.97 && activeIndex >= 0) {
+      // Slightly wider entry fade (0.06 vs 0.04) so the appearance feels
+      // intentional rather than abrupt.
+      const fadeIn = saturate((sectionProgress - 0.32) / 0.06);
       const fadeOut = saturate((0.97 - sectionProgress) / 0.04);
       targetOpacity = Math.min(fadeIn, fadeOut);
     }

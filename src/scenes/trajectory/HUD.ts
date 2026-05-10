@@ -20,7 +20,11 @@ import type { Milestone } from './PathBuilder';
  * Position: top-right corner, fixed. Above the canvas, below the nav bar.
  */
 
-const HUD_VISIBLE_BAND_START = 0.02; // fade in once we're 2% into section
+// Issue #3 fix: hold the HUD until the career section actually fills the
+// viewport (sectionProgress ≈ 0.32 for a 220vh-tall section on a 100vh
+// viewport). Previously fading in at 0.02 meant the HUD appeared while the
+// user was still seeing 90% Bag.
+const HUD_VISIBLE_BAND_START = 0.32;
 const HUD_VISIBLE_BAND_END = 0.97;   // fade out near exit transition
 
 export class HUD {
@@ -161,8 +165,9 @@ export class HUD {
     // 5. Visibility envelope.
     let targetOpacity = 0;
     if (sectionProgress >= HUD_VISIBLE_BAND_START && sectionProgress <= HUD_VISIBLE_BAND_END) {
-      // Soft fade in/out within the band.
-      const fadeIn = saturate((sectionProgress - HUD_VISIBLE_BAND_START) / 0.04);
+      // Soft fade in/out within the band. Slightly slower entry fade (0.06)
+      // so the HUD slides in as the section settles into view.
+      const fadeIn = saturate((sectionProgress - HUD_VISIBLE_BAND_START) / 0.06);
       const fadeOut = saturate((HUD_VISIBLE_BAND_END - sectionProgress) / 0.04);
       targetOpacity = Math.min(fadeIn, fadeOut);
     }

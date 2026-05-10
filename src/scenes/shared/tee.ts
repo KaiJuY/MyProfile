@@ -22,6 +22,22 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 let _teeGeomCache: THREE.BufferGeometry | null = null;
 let _teeGeomPromise: Promise<THREE.BufferGeometry> | null = null;
 
+/**
+ * Tee orientation metrics (computed once after the geometry is normalized).
+ * - `topY`: world-Y of the tee's tip (ball-resting point) in geometry-local
+ *   space, in the same units as the bounding-sphere radius (≈ 0.5).
+ * Consumers multiply by their per-frame mesh.scale to convert to world units.
+ */
+export interface TeeMetrics {
+  topY: number;
+  bottomY: number;
+  height: number;
+}
+let _teeMetrics: TeeMetrics | null = null;
+export function getTeeMetrics(): TeeMetrics | null {
+  return _teeMetrics;
+}
+
 export async function loadGolfTeeGeometry(
   url: string = '/models/golf_tee.glb'
 ): Promise<THREE.BufferGeometry> {
@@ -124,6 +140,78 @@ export async function loadGolfTeeGeometry(
     geom.computeBoundingBox();
 
     if (!geom.attributes.normal) geom.computeVertexNormals();
+
+    // ── Canonical orientation: tee point UP, base DOWN ───────────────────
+    // The source GLB is authored in Blender's Z-up convention (its long
+    // axis runs along +Z). Three.js is Y-up, so without a fixup the tee
+    // appears lying on its side / upside-down (issue #2 from user
+    // feedback: "Tee 現在是倒的他應該垂直於畫面才對").
+    //
+    // Strategy: pick the tee's primary (longest) axis from its OBB; rotate
+    // so that axis aligns with world +Y; then flip if the wider-base end
+    // is on top. This is robust against any future tee model regardless of
+    // its source authoring convention.
+    geom.computeBoundingBox();
+    const bb = geom.boundingBox!;
+    const sx = bb.max.x - bb.min.x;
+    const sy = bb.max.y - bb.min.y;
+    const sz = bb.max.z - bb.min.z;
+    // Find which axis is the longest — that's the "vertical" axis of the tee.
+    let longest: 'x' | 'y' | 'z' = 'y';
+    if (sx >= sy && sx >= sz) longest = 'x';
+    else if (sz >= sx && sz >= sy) longest = 'z';
+    else longest = 'y';
+    if (longest === 'z') {
+      // Z-up source (Blender default) → Y-up.
+      geom.rotateX(-Math.PI / 2);
+    } else if (longest === 'x') {
+      geom.rotateZ(Math.PI / 2);
+    }
+    // Recompute after rotation to test "which end is the wider base".
+    geom.computeBoundingBox();
+    const bb2 = geom.boundingBox!;
+    // Sample point distribution along Y to find where the geometry is widest.
+    // The base of a tee is wider than the tip; if the wide end is currently
+    // pointing UP (+Y), flip 180° so the wide BASE sits at -Y and the tip
+    // points UP.
+    const pos = geom.attributes.position;
+    let halfRadiusUpper = 0;
+    let halfRadiusLower = 0;
+    let countUpper = 0;
+    let countLower = 0;
+    const yMid = (bb2.max.y + bb2.min.y) * 0.5;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      const r = Math.sqrt(x * x + z * z);
+      if (y > yMid) {
+        halfRadiusUpper += r;
+        countUpper++;
+      } else {
+        halfRadiusLower += r;
+        countLower++;
+      }
+    }
+    const avgUpper = countUpper > 0 ? halfRadiusUpper / countUpper : 0;
+    const avgLower = countLower > 0 ? halfRadiusLower / countLower : 0;
+    // Heuristic: a real tee has cup/tip on top (smaller avg radius) and
+    // base on bottom (slightly larger avg radius near the foot peg). If
+    // upper average is LARGER than lower, the tee is upside-down — flip.
+    if (avgUpper > avgLower * 1.05) {
+      geom.rotateX(Math.PI);
+      geom.computeBoundingBox();
+    }
+    geom.computeBoundingSphere();
+
+    // Cache orientation metrics for the consuming scene (FlythroughScene
+    // uses topY to seat the ball on the tip like a rigid body — issue #2b).
+    const finalBB = geom.boundingBox!;
+    _teeMetrics = {
+      topY: finalBB.max.y,
+      bottomY: finalBB.min.y,
+      height: finalBB.max.y - finalBB.min.y,
+    };
 
     _teeGeomCache = geom;
     _teeGeomPromise = null;

@@ -122,6 +122,8 @@ export class ContactScene implements SceneModule {
   private hole!: Hole;
   private ballMesh!: THREE.Mesh;
   private ballMaterial!: THREE.ShaderMaterial;
+  /** Inner fill sphere material (GLB ball builds it; mirrors uOpacity). */
+  private ballFillMaterial: THREE.ShaderMaterial | null = null;
   private matcapTex?: THREE.Texture;
 
   // Physics handles (desktop only)
@@ -209,16 +211,24 @@ export class ContactScene implements SceneModule {
     this.matcapTex.generateMipmaps = true;
 
     const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
-      rimStrength: 0.35,
+      rimStrength: 0.45,
       rimColor: new THREE.Color(0x9ec3d6),
       // GLB has real dimple geometry — let the actual mesh normals drive the
       // matcap highlight pattern instead of the procedural normal map.
       useDimpleMap: false,
+      // Match Hero: soften matcap so dimples don't read as black pits.
+      matcapSoftness: 0.55,
       opacity: 1.0,
       transparent: true, // we fade the ball after drop
     });
     this.ballMesh = built.mesh;
     this.ballMaterial = built.material;
+    // The GLB builder returns an inner fill sphere; mirror transparency on
+    // it so the ball drop fade-out applies to both layers.
+    if (built.fillMaterial) {
+      built.fillMaterial.transparent = true;
+      this.ballFillMaterial = built.fillMaterial;
+    }
     // Scale the visual mesh to BALL_RADIUS while leaving the cached geometry
     // at its normalized radius 0.5 (so HeroScene sees the same source).
     const visualScale = BALL_RADIUS / 0.5;
@@ -417,6 +427,7 @@ export class ContactScene implements SceneModule {
     // Reset visual state
     this.ballMesh.visible = true;
     this.ballMaterial.uniforms.uOpacity.value = 1.0;
+    if (this.ballFillMaterial) this.ballFillMaterial.uniforms.uOpacity.value = 1.0;
     this.hole.setGlow(0);
 
     if (this.timeline) {
@@ -484,6 +495,11 @@ export class ContactScene implements SceneModule {
       value: 0,
       duration: total * 0.25,
       ease: 'power2.out',
+      onUpdate: () => {
+        if (this.ballFillMaterial)
+          this.ballFillMaterial.uniforms.uOpacity.value =
+            this.ballMaterial.uniforms.uOpacity.value;
+      },
     }, `-=${total * 0.20}`);
 
     // No camera shake on mobile, no DOM fade — content was visible all along.
@@ -636,6 +652,8 @@ export class ContactScene implements SceneModule {
       ease: 'power2.out',
       onUpdate: () => {
         this.ballMaterial.uniforms.uOpacity.value = dropProxy.opacity;
+        if (this.ballFillMaterial)
+          this.ballFillMaterial.uniforms.uOpacity.value = dropProxy.opacity;
       },
     }, phaseTeeterEnd + (phaseDropEnd - phaseTeeterEnd) * 0.30);
 
@@ -706,6 +724,7 @@ export class ContactScene implements SceneModule {
     this.isPlaying = false;
     this.armedForReplay = true;
     this.ballMaterial.uniforms.uOpacity.value = 1.0;
+    if (this.ballFillMaterial) this.ballFillMaterial.uniforms.uOpacity.value = 1.0;
     this.ballMesh.visible = false;
     this.hole.setGlow(0);
 
@@ -829,6 +848,7 @@ export class ContactScene implements SceneModule {
     // HeroScene also references it — do NOT dispose here. Full teardown is
     // handled by `disposeSharedGolfBallAssets` at app dispose.
     this.ballMaterial.dispose();
+    if (this.ballFillMaterial) this.ballFillMaterial.dispose();
     if (this.matcapTex) this.matcapTex.dispose();
 
     // Physics cleanup. Rapier wrapper owns the world; we don't need to

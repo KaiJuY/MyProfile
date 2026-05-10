@@ -336,38 +336,74 @@ export class TrajectoryScene implements SceneModule {
       return;
     }
 
-    // Inside the section: mount visuals (re-arms the settled flag for the
-    // next post-section pass).
+    // ── Issue #3: Career scene gating ───────────────────────────────────
+    // The career section is min-height: 220vh; sectionProgress reaches ≈ 0.32
+    // exactly when the section TOP hits the viewport top (i.e., section
+    // fills the viewport). Prior to that, the user still sees ~90% Bag
+    // section above with the career heading just appearing — playing the
+    // ring/card animation here felt premature and disconnected from the
+    // career content (user feedback verbatim: "我們一移動到 Career 的標題
+    // 時這個區域的動畫就開始出現了，但是這時候 90% 的畫面都還是 Bag 的部分").
+    //
+    // Therefore: gate the ENTIRE scene presence (markers + card + path
+    // animation) on sectionProgress >= SCENE_START_SP. Below this, the
+    // group is unmounted and the card is hidden.
+    const SCENE_START_SP = 0.32;
+    const SCENE_END_SP = 0.98;
+    const sceneActive = sp >= SCENE_START_SP - 0.02 && sp <= SCENE_END_SP;
+    if (!sceneActive) {
+      // Treat the section as "in" for camera-damp purposes (we're inside the
+      // 220vh tall block) but DO NOT mount markers / drive the card. Tween
+      // the camera back to default so other sections aren't visually
+      // impacted by a stranded camera position.
+      this.unmount();
+      this.cameraPos.x = damp(this.cameraPos.x, DEFAULT_CAMERA_POSITION.x, CAMERA_DAMP_LAMBDA, dt);
+      this.cameraPos.y = damp(this.cameraPos.y, DEFAULT_CAMERA_POSITION.y, CAMERA_DAMP_LAMBDA, dt);
+      this.cameraPos.z = damp(this.cameraPos.z, DEFAULT_CAMERA_POSITION.z, CAMERA_DAMP_LAMBDA, dt);
+      this.lookAtTarget.x = damp(this.lookAtTarget.x, DEFAULT_CAMERA_LOOKAT.x, LOOKAT_DAMP_LAMBDA, dt);
+      this.lookAtTarget.y = damp(this.lookAtTarget.y, DEFAULT_CAMERA_LOOKAT.y, LOOKAT_DAMP_LAMBDA, dt);
+      this.lookAtTarget.z = damp(this.lookAtTarget.z, DEFAULT_CAMERA_LOOKAT.z, LOOKAT_DAMP_LAMBDA, dt);
+      this.camera.position.copy(this.cameraPos);
+      this.camera.lookAt(this.lookAtTarget);
+      this.camera.updateMatrixWorld();
+      // Keep the .tl-item HTML hidden until the scene actually starts.
+      if (!isMobile) {
+        for (let i = 0; i < this.timelineItems.length; i++) {
+          this.itemOpacity[i] = damp(this.itemOpacity[i], 0, 4, dt);
+          const el = this.timelineItems[i];
+          const o = this.itemOpacity[i];
+          el.style.opacity = `${o}`;
+          el.style.transform = `translateY(${(1 - o) * 18}px)`;
+        }
+      }
+      // Hide HUD + card when scene isn't yet active — passing sp=0 keeps the
+      // band check below the visibility threshold (HUD/card both gate on
+      // sp band, see HUD.update + TrajectoryCard.update).
+      if (this.frame % 4 === 0) this.hud.update(0, 0, 0);
+      this.card.update(-1, 0);
+      return;
+    }
+
+    // Scene active: mount visuals (re-arms the settled flag for the next
+    // post-section pass).
     this.cameraSettled = false;
     this.mount();
 
     // Compute the target path point and look-ahead point.
     //
-    // Wave 6: pathT is remapped from a *band* of sectionProgress, not the raw
-    // 0..1 sweep. Reason: with `.timeline` hidden the section is taller (set
-    // in src/style.css to min-height: 220vh) but the user only enters
-    // sectionProgress ≈ 0.31 once the section's bottom hits the viewport
-    // bottom. We want pathT=0 (NYCU) to rest visibly while the heading +
-    // section meta scroll into place, and only THEN start advancing through
-    // milestones. Below SP_START the camera idles at NYCU; above SP_END it
-    // pins past SunSun for the exit fly-past.
+    // Issue #3 (user feedback "每個動畫的區間可以稍微拉長一點"): widen the
+    // per-milestone band so each transition takes longer. Previously
+    // [0.55, 0.95] = 0.40 sp width over 3 transitions ≈ 0.13 each. New band
+    // [0.36, 0.92] = 0.56 sp width over 3 transitions ≈ 0.187 each — about
+    // 40% longer per transition. With milestone t-values at {0, 0.333,
+    // 0.667, 1.0} (4 milestones), midpoints land at sp ≈ {0.45, 0.64, 0.83}.
     //
-    // Wave 8 tuning: shifted band from [0.40, 0.95] to [0.55, 0.95] because
-    // the previous start fired the ring-marker animation while the section
-    // heading was still arriving on screen — felt premature. The first ~55%
-    // of the section is now reserved for the heading + meta + first-milestone
-    // anchor; the milestone-to-milestone progression happens during
-    // [0.55, 0.95]. With milestone t-values at {0, 0.25, 0.5, 0.75}, the
-    // transition midpoints land at sp ≈ {0.60, 0.70, 0.81} — well inside the
-    // visible portion of the section, well after the heading has settled.
-    //
-    // Entry transition: implicit in the damper — current camera is near (0,0,5)
-    // when section starts; target is path-start; damper eases.
-    // Exit transition: after sp > 0.95 the pathT clamps at 1, camera reads
-    // the trailing 5th control point neighbourhood (curve extrapolates).
-    const SP_START = 0.55;
-    const SP_END = 0.95;
-    const pathT = saturate((sp - SP_START) / (SP_END - SP_START));
+    // Note: PATH_START_SP = SCENE_START_SP + small lead so the first
+    // milestone (NYCU) appears with the ring already visible from the entry
+    // fade-in — no hard pop.
+    const PATH_START_SP = 0.36;
+    const PATH_END_SP = 0.92;
+    const pathT = saturate((sp - PATH_START_SP) / (PATH_END_SP - PATH_START_SP));
 
     this.path.curve.getPoint(pathT, this.tmpPos);
     // Look slightly ahead. We use a small forward step in t-space; clamp to
