@@ -6,7 +6,7 @@ import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import type { ScrollManager } from '@core/ScrollManager';
 import { damp, lerp, clamp, smoothstep } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
-import { buildGolfBallMeshFromGLB } from './shared/golfBall';
+import { buildBallMesh } from './shared/golfAndTee';
 
 /**
  * HeroScene — Lusion-style 3D golf ball with Rapier physics, mouse-as-club
@@ -265,7 +265,7 @@ export class HeroScene implements SceneModule {
     //    the highlight pattern (no procedural normal-map needed). The loader
     //    centers + scales the geometry so its bounding-sphere radius is 0.5,
     //    matching BALL_RADIUS for the existing physics collider + stencil sizing.
-    const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
+    const built = await buildBallMesh(this.matcapTex, {
       rimStrength: 0.45,                       // bumped from 0.35 for cleaner
                                                // silhouette against dark backdrop
       rimColor: new THREE.Color(0x9ec3d6),     // cool-blue rim, very faint

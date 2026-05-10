@@ -33,17 +33,18 @@ import { saturate } from '@utils/lerp';
  * if `enabled === false`; TrajectoryScene gates that off `isMobile`.
  */
 
-const FADE_OUT_MS = 480;
-const FADE_IN_MS = 480;
-const FADE_IN_DELAY_MS = 80;
+// Issue #2 (focus-pull cross-fade): outgoing card recedes (-Z + scale + blur);
+// incoming card appears clear and sharp. Slightly slower than before so the
+// "rack focus" feel registers.
+const FADE_OUT_MS = 600;
+const FADE_IN_MS = 520;
+const FADE_IN_DELAY_MS = 120;
 
 // Distance in pixels between the projected marker position and the card edge.
-// Card sits to the right of the ring; offset is the gap.
-const HORIZONTAL_OFFSET_PX = 80;
+// Card sits ALWAYS to the right of the ring (Issue #2 — user wants it pinned
+// right, not auto-flipping). Wider offset accommodates the larger card.
+const HORIZONTAL_OFFSET_PX = 120;
 const VERTICAL_OFFSET_PX = 0;
-// If the marker is past this fraction of the viewport from the left edge,
-// flip the card to the LEFT side so it doesn't go off-screen.
-const FLIP_THRESHOLD = 0.55;
 
 interface CardContent {
   year: string;
@@ -118,11 +119,15 @@ export class TrajectoryCard {
     // The transition layer wraps two stacked copies (front + back). When
     // currentIndex changes, we copy front → back, write new content into front,
     // and run the cross-fade animation.
+    //
+    // Width bumped 320 → 420 (Issue #2: "可以把整個Card做大一點"). The CSS
+    // `.trajectory-card` rules in src/style.css carry the matching padding
+    // and font-size adjustments.
     const layer = document.createElement('div');
     layer.className = 'trajectory-card-layer';
     Object.assign(layer.style, {
       position: 'relative',
-      width: '320px',
+      width: '420px',
     });
 
     const front = this.makeFace();
@@ -257,19 +262,15 @@ export class TrajectoryCard {
     const sx = (this.tmpProj.x * 0.5 + 0.5) * this.vw;
     const sy = (-this.tmpProj.y * 0.5 + 0.5) * this.vh;
 
-    // Decide left vs right side based on screen position.
-    const flip = sx / this.vw > FLIP_THRESHOLD;
-    const cardWidth = this.layer.offsetWidth || 320;
-    let cx: number;
-    if (flip) {
-      cx = sx - HORIZONTAL_OFFSET_PX - cardWidth;
-    } else {
-      cx = sx + HORIZONTAL_OFFSET_PX;
-    }
+    // Issue #2: always pin to the RIGHT of the ring (no auto-flip). The
+    // viewport-edge clamp below still keeps the card visible if the projected
+    // marker drifts to the right side of the screen.
+    const cardWidth = this.layer.offsetWidth || 420;
+    const cx = sx + HORIZONTAL_OFFSET_PX;
     // Vertical anchor: center of card aligned to marker (slightly biased up
     // because the marker has a tick line going UP — the card looks balanced
     // when its visual center sits a touch above the ring's center).
-    const cardHeight = this.layer.offsetHeight || 200;
+    const cardHeight = this.layer.offsetHeight || 280;
     const cy = sy - cardHeight * 0.5 + VERTICAL_OFFSET_PX;
 
     // Keep the card on-screen even if the marker briefly goes off-screen during
@@ -283,8 +284,11 @@ export class TrajectoryCard {
   }
 
   /**
-   * Cross-fade animation: copy current front → back, fade back out, write new
-   * content to front, fade it in. Plain CSS transitions, no animation library.
+   * Cross-fade animation with focus-pull (Issue #2). Outgoing card recedes
+   * (translate-Z back, scale 0.92, blur 8px, fade to 0) while incoming card
+   * comes from a slight foreground (scale 1.06, no blur) to neutral (scale 1.0,
+   * sharp). The CSS `filter: blur(...)` handles the optical focus-shift for
+   * free — no postprocess pass needed.
    * Reduced-motion: snap to new content with no transition at all.
    */
   private transitionTo(newIndex: number): void {
@@ -294,38 +298,51 @@ export class TrajectoryCard {
       this.writeFace(this.frontEl, this.contents[newIndex]);
       this.frontEl.style.transition = 'none';
       this.frontEl.style.opacity = '1';
-      this.frontEl.style.transform = 'translateX(0) scale(1)';
+      this.frontEl.style.transform = 'translate3d(0,0,0) scale(1)';
+      this.frontEl.style.filter = 'blur(0)';
       this.backEl.style.opacity = '0';
+      this.backEl.style.filter = 'blur(0)';
       return;
     }
 
-    // Copy front innerHTML → back, snap back to fully visible, then animate it
-    // out. Meanwhile prep front with the new content, hidden + slightly
-    // scaled, then animate it in.
+    // Copy front → back (so back holds the previous milestone), snap back to
+    // fully visible + sharp, then animate it RECEDING (back+blur+fade).
+    // Meanwhile prep front with the new content, slightly forward + invisible,
+    // then animate it INTO focus.
     this.backEl.innerHTML = this.frontEl.innerHTML;
     this.backEl.style.transition = 'none';
     this.backEl.style.opacity = '1';
-    this.backEl.style.transform = 'translateX(0) scale(1)';
+    this.backEl.style.transform = 'translate3d(0,0,0) scale(1)';
+    this.backEl.style.filter = 'blur(0)';
 
     this.writeFace(this.frontEl, this.contents[newIndex]);
     this.frontEl.style.transition = 'none';
     this.frontEl.style.opacity = '0';
-    this.frontEl.style.transform = 'translateX(-12px) scale(1.06)';
+    // Foreground origin: closer to camera + slightly scaled up + soft blur
+    // (out-of-focus close subject), then "rack focus" pulls it into clarity.
+    this.frontEl.style.transform = 'translate3d(0, 0, 30px) scale(1.06)';
+    this.frontEl.style.filter = 'blur(6px)';
 
     // Force reflow so the upcoming transitions actually run from the
     // just-set starting values.
     void this.frontEl.offsetWidth;
 
-    this.backEl.style.transition = `opacity ${FADE_OUT_MS}ms ease-out, transform ${FADE_OUT_MS}ms ease-out`;
+    // Outgoing card: recede + blur + fade. The combined effect reads as
+    // "shifting depth-of-field" rather than a flat opacity tween.
+    this.backEl.style.transition =
+      `opacity ${FADE_OUT_MS}ms ease-out, transform ${FADE_OUT_MS}ms ease-out, filter ${FADE_OUT_MS}ms ease-out`;
     this.backEl.style.opacity = '0';
-    this.backEl.style.transform = 'translateX(8px) scale(0.92)';
+    this.backEl.style.transform = 'translate3d(0, 0, -50px) scale(0.92)';
+    this.backEl.style.filter = 'blur(8px)';
 
     // Slight delay so the incoming card crests as the outgoing one is mostly
-    // gone — gives the "stack" feel the user described.
+    // gone — only ONE card is the visual focus at any given moment (Issue #2).
     window.setTimeout(() => {
-      this.frontEl.style.transition = `opacity ${FADE_IN_MS}ms ease-out, transform ${FADE_IN_MS}ms ease-out`;
+      this.frontEl.style.transition =
+        `opacity ${FADE_IN_MS}ms ease-out, transform ${FADE_IN_MS}ms ease-out, filter ${FADE_IN_MS}ms ease-out`;
       this.frontEl.style.opacity = '1';
-      this.frontEl.style.transform = 'translateX(0) scale(1)';
+      this.frontEl.style.transform = 'translate3d(0, 0, 0) scale(1)';
+      this.frontEl.style.filter = 'blur(0)';
     }, FADE_IN_DELAY_MS);
   }
 

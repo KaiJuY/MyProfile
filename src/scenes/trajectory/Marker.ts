@@ -135,33 +135,62 @@ export class Marker {
    * camera in world-distance units. `nearness` ∈ [0,1] where 1 = camera passing
    * directly through this marker, 0 = far away.
    * `isActive` = whether this marker is the one the camera is closest to.
+   *
+   * Issue #2 (depth-focus): only ONE ring should be the main focus at any
+   * moment. The active ring is large (1.4×) + bright (full opacity); the
+   * adjacent (just-passed / next-up) is small (0.6×) + dim (0.25 opacity);
+   * distant rings are essentially invisible (0.0 scale). This gives the
+   * "focus pulled" effect without a postprocess blur pass.
    */
   update(dt: number, nearness: number, isActive: boolean): void {
-    // Active marker scales up to 1.4× and shifts color toward the warm pencil
-    // glow (only if glowEnabled — otherwise stays at COLOR_ACTIVE off-white).
-    const targetScale = isActive ? 1.4 : 1.0;
-    // Damp scale toward target for a smooth pop.
+    // Three visual states:
+    //   active   → scale 1.4, opacity 1.0, sharp colour (matches user spec)
+    //   adjacent → scale 0.6, opacity 0.25, dim
+    //   distant  → scale 0.0 (invisible)
+    //
+    // `nearness` is already a smoothed proxy for distance; we use it to pick
+    // the visual tier so the transition feels like one continuous fade rather
+    // than three discrete states.
+    let targetScale: number;
+    let targetOpacity: number;
+    if (isActive) {
+      targetScale = 1.4;
+      targetOpacity = 1.0;
+    } else if (nearness > 0.0001) {
+      // Adjacent — receding/incoming. Fade in/out via nearness so adjacent
+      // markers slide between distant (0,0) and adjacent peak (0.6, 0.25).
+      targetScale = 0.6 * nearness;
+      targetOpacity = 0.25 * nearness;
+    } else {
+      targetScale = 0.0;
+      targetOpacity = 0.0;
+    }
+
+    // Damp toward target for smooth depth-pull / push transitions.
     const k = 1 - Math.exp(-8 * dt);
     this.currentScale += (targetScale - this.currentScale) * k;
     this.group.scale.setScalar(this.currentScale);
 
-    // Color: lerp from base → active by nearness. If active AND glowEnabled,
-    // additionally tint toward COLOR_GLOW.
+    // Color: active = warm accent; adjacent/distant = dim base ink.
     const baseTarget = isActive ? COLOR_ACTIVE : COLOR_BASE;
-    // Build a temporary target color.
     const target = baseTarget.clone();
-    if (this.glowEnabled) {
-      // mix in the warm glow proportional to nearness × isActive
-      const glowAmt = isActive ? nearness * 0.35 : nearness * 0.15;
-      target.lerp(COLOR_GLOW, glowAmt);
+    if (this.glowEnabled && isActive) {
+      target.lerp(COLOR_GLOW, nearness * 0.35);
     }
-    // Damp current color toward target.
     this.currentColor.lerp(target, k);
     this.ringMat.color.copy(this.currentColor);
     this.sphereMat.color.copy(this.currentColor);
 
-    // Ring opacity gets a small boost when active.
-    this.ringMat.opacity = isActive ? 1.0 : 0.85;
+    // Opacity drives the focus-pull. Active = full sharp. Adjacent = faint.
+    this.ringMat.opacity = targetOpacity;
+    this.sphereMat.opacity = targetOpacity * 0.95;
+    this.tickMat.opacity = targetOpacity * 0.6;
+    // Hide entirely when faded out so we don't burn fillrate / depth-test
+    // cycles on invisible meshes.
+    const visible = targetOpacity > 0.01;
+    this.ringMesh.visible = visible;
+    this.sphereMesh.visible = visible;
+    this.tickLine.visible = visible;
   }
 
   dispose(): void {

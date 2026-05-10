@@ -92,11 +92,18 @@ export function buildPath(): BuiltPath {
   // time the camera passes its marker", so we use these same t values for the
   // .tl-item fade computation. (The rest of the code drives pathT = saturate(sp),
   // so at sp=1.0 the camera is at curve t=1.0 = past SunSun.)
+  // EVEN-SPACED milestone t-values across the full curve (Issue #2 — user
+  // wanted "每個環出現的滾動間隔好像有點不一致" / smoother spacing). Previously
+  // markers landed at t = i/(N-1) where N=4 segments → 0, 0.25, 0.5, 0.75
+  // (last one stranded mid-curve). With evenly spaced t = (i+1)/(N+1) — i.e.
+  // 0.20, 0.40, 0.60, 0.80 — the 4 markers split the path into 5 equal
+  // intervals and the camera passes each at sectionProgress midpoints
+  // approximately {0.50, 0.64, 0.78} (matches Issue #2's required midpoints
+  // when combined with the [0.36, 0.92] band in TrajectoryScene).
   const totalSteps = MILESTONE_DATES.length; // 4
-  const segCount = CONTROL_POINTS.length - 1; // 4
   const milestones: Milestone[] = [];
   for (let i = 0; i < totalSteps; i++) {
-    const t = i / segCount; // 0, 0.25, 0.5, 0.75
+    const t = (i + 1) / (totalSteps + 1); // 0.20, 0.40, 0.60, 0.80
     const pos = curve.getPoint(t);
     milestones.push({
       date: MILESTONE_DATES[i],

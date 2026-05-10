@@ -439,6 +439,12 @@ export class TrajectoryScene implements SceneModule {
 
     // Update markers — find the active one (closest in path-t to current
     // pathT) and pump up its scale/color. Per playbook footer §2 / §1.
+    //
+    // Issue #2 (single-focus): the closest marker is ALWAYS the active one
+    // (so the card always has content to display); the depth-pull effect is
+    // achieved by the per-marker scale/opacity in Marker.update — adjacent
+    // markers fade to scale=0 outside their nearness window, so visually
+    // only ONE ring is in focus at any moment.
     let activeIdx = -1;
     let activeDist = Infinity;
     for (let i = 0; i < this.markers.length; i++) {
@@ -448,10 +454,20 @@ export class TrajectoryScene implements SceneModule {
         activeIdx = i;
       }
     }
+    // Track the rate-of-change of activeIdx for the card cross-fade trigger.
+    // (No additional gating — TrajectoryCard's `transitionTo` runs on every
+    // activeIdx change which is what drives the focus-pull animation.)
+    // Issue #2 (single-focus): with milestone t-values now evenly spaced at
+    // 0.20 increments, we narrow the nearness window so adjacent rings fade
+    // out before the next one fades in. Window 0.10 centered on the marker
+    // means a ring is fully visible only within ±0.05 of its t — at the
+    // exact midpoint between two markers (e.g. t=0.30 between milestone 0
+    // and 1) BOTH neighbors are at nearness=0 and the active ring's "depth
+    // pull" gets the full focus.
     for (let i = 0; i < this.markers.length; i++) {
       const distT = Math.abs(pathT - this.path.milestones[i].t);
-      // Nearness in [0,1]: 1 when within 0.04 of the marker, 0 when > 0.18.
-      const nearness = saturate(1 - (distT - 0.04) / 0.14);
+      // Nearness in [0,1]: 1 when within 0.02 of the marker, 0 when > 0.10.
+      const nearness = saturate(1 - (distT - 0.02) / 0.08);
       this.markers[i].update(dt, nearness, i === activeIdx);
     }
 

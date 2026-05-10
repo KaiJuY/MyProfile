@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
@@ -251,7 +250,7 @@ let _dummyDimpleTex: THREE.DataTexture | null = null;
 
 /** 1×1 transparent normal-map texture; used as a binding placeholder when
  *  `useDimpleMap=false` so the `uDimple` sampler always has something attached. */
-function getDummyDimpleTexture(): THREE.DataTexture {
+export function getDummyDimpleTexture(): THREE.DataTexture {
   if (_dummyDimpleTex) return _dummyDimpleTex;
   // Flat normal (0,0,1) encoded as RGB (128,128,255).
   const data = new Uint8Array([128, 128, 255, 255]);
@@ -346,136 +345,35 @@ export function buildGolfBallMesh(
 }
 
 // -----------------------------------------------------------------------------
-// GLB loader + builder (preferred path — Wave 2)
+// GLB loader + builder — DELEGATES to the unified GolfAndTee.glb path.
 // -----------------------------------------------------------------------------
 
-let _ballGeomCache: THREE.BufferGeometry | null = null;
-let _ballGeomPromise: Promise<THREE.BufferGeometry> | null = null;
+// The combined `GolfAndTee.glb` model is loaded by `golfAndTee.ts`. We keep
+// `loadGolfBallGeometry` exported here as a thin re-export so existing call
+// sites continue to compile, but the implementation now lives in one place.
+// New code should import `loadGolfAndTee` directly.
+import { loadGolfAndTee } from './golfAndTee';
 
 /**
- * Load and cache the golf-ball geometry from a GLB. We extract the mesh
- * geometries (merging if more than one), center the bounding sphere on the
- * origin, and uniformly scale so the bounding-sphere radius is 0.5 — matching
- * the procedural BALL_RADIUS that the Rapier colliders + stencil sizing assume.
- *
- * The full `gltf.scene` is intentionally NOT kept; the GLB's authored material
- * is discarded, since both consuming scenes apply our matcap+fresnel material
- * for visual continuity.
- *
- * Caches across calls (and across both consumer scenes — Hero loads first,
- * Contact reuses).
+ * Backwards-compat shim. Delegates to `loadGolfAndTee()` and returns the
+ * cached BALL geometry. The old `/models/golf_ball.glb` path is gone — the
+ * URL parameter is ignored (combined GLB is at `/models/GolfAndTee.glb`).
  */
 export async function loadGolfBallGeometry(
-  url: string = '/models/golf_ball.glb'
+  url?: string
 ): Promise<THREE.BufferGeometry> {
-  if (_ballGeomCache) return _ballGeomCache;
-  if (_ballGeomPromise) return _ballGeomPromise;
-
-  const loader = new GLTFLoader();
-  _ballGeomPromise = (async () => {
-    const gltf = await loader.loadAsync(url);
-
-    // Collect every mesh's geometry along with its world-space AABB so we can
-    // identify the closed-sphere mesh. Some artist exports include MANY balls
-    // and partial shells (LOD copies, hemispheres, "shop display" arrays).
-    // Merging the wrong subset bakes in HEMISPHERICAL meshes whose AABBs are
-    // flat in one axis (e.g. z-size 113 while x/y are 397) — these read as
-    // "transparent faces" because their open back is exposed.
-    //
-    // Picking strategy: prefer the SINGLE mesh whose AABB is most cube-like
-    // (axis sizes near 1:1:1) — a closed sphere has aspect ratio ~1:1:1, an
-    // open hemisphere is ~1:1:0.5 or worse. Among meshes that meet a "closed
-    // enough" cube-likeness threshold, prefer the one with the most vertices
-    // (highest poly count → highest visual fidelity). This avoids merging
-    // spatially-overlapping partial shells, which was the root cause of the
-    // see-through-face bug.
-    interface MeshEntry {
-      geom: THREE.BufferGeometry;
-      vertCount: number;
-      sx: number;
-      sy: number;
-      sz: number;
-      cubeLikeness: number; // min axis / max axis, 1.0 = perfect cube
-    }
-    const entries: MeshEntry[] = [];
-    gltf.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh && m.geometry) {
-        const g = m.geometry.clone();
-        m.updateWorldMatrix(true, false);
-        g.applyMatrix4(m.matrixWorld);
-        g.computeBoundingBox();
-        const bb = g.boundingBox!;
-        const sx = bb.max.x - bb.min.x;
-        const sy = bb.max.y - bb.min.y;
-        const sz = bb.max.z - bb.min.z;
-        const maxAxis = Math.max(sx, sy, sz);
-        const minAxis = Math.max(1e-6, Math.min(sx, sy, sz));
-        const cubeLikeness = minAxis / maxAxis;
-        entries.push({
-          geom: g,
-          vertCount: g.attributes.position?.count ?? 0,
-          sx,
-          sy,
-          sz,
-          cubeLikeness,
-        });
-      }
-    });
-
-    if (entries.length === 0) {
-      throw new Error('golfBall: no mesh found in GLB');
-    }
-
-    // Drop trivial helpers (e.g., a 24-vert reference Cube). Below ~1k verts is
-    // not a golf-ball mesh.
-    const realMeshes = entries.filter((e) => e.vertCount > 1000);
-    const candidates = realMeshes.length > 0 ? realMeshes : entries;
-
-    // Closed-sphere candidates: cube-likeness >= 0.9 (axes within 10% of each
-    // other). Among them, prefer the highest vertex count.
-    const CLOSED_THRESHOLD = 0.9;
-    const closed = candidates.filter((e) => e.cubeLikeness >= CLOSED_THRESHOLD);
-    let winnerEntry: MeshEntry;
-    if (closed.length > 0) {
-      winnerEntry = closed.reduce((a, b) => (a.vertCount > b.vertCount ? a : b));
-    } else {
-      // No mesh is cube-like — fall back to the MOST cube-like mesh (still
-      // better than merging partial shells, which guaranteed a visible hole).
-      winnerEntry = candidates.reduce((a, b) =>
-        a.cubeLikeness > b.cubeLikeness ? a : b
-      );
-    }
-
-    let geom: THREE.BufferGeometry = winnerEntry.geom;
-    // Keep `mergeGeometries` reference live in case we want to re-enable
-    // multi-shell merging behind a flag in the future.
-    void mergeGeometries;
-
-    // Center on origin and normalize to bounding-sphere radius 0.5.
-    geom.computeBoundingSphere();
-    const bs = geom.boundingSphere;
-    if (!bs) throw new Error('golfBall: failed to compute bounding sphere');
-    geom.translate(-bs.center.x, -bs.center.y, -bs.center.z);
-    const scale = 0.5 / bs.radius;
-    geom.scale(scale, scale, scale);
-    geom.computeBoundingSphere();
-    geom.computeBoundingBox();
-
-    if (!geom.attributes.normal) geom.computeVertexNormals();
-
-    _ballGeomCache = geom;
-    _ballGeomPromise = null;
-    return geom;
-  })();
-
-  return _ballGeomPromise;
+  void url;
+  // Touch mergeGeometries so the import isn't tree-shaken away — caller
+  // tests still expect this symbol to be reachable.
+  void mergeGeometries;
+  const { ballGeom } = await loadGolfAndTee();
+  return ballGeom;
 }
 
 // Shared dimple-normal texture used by the GLB builder. Built lazily on first
 // call so the procedural-fallback path (which builds its own) is unaffected.
 let _sharedDimpleTex: THREE.CanvasTexture | null = null;
-function getSharedDimpleTexture(): THREE.CanvasTexture {
+export function getSharedDimpleTexture(): THREE.CanvasTexture {
   if (_sharedDimpleTex) return _sharedDimpleTex;
   _sharedDimpleTex = buildDimpleNormalMap(512, 250, 14, 0.55);
   return _sharedDimpleTex;
@@ -487,12 +385,10 @@ function getSharedDimpleTexture(): THREE.CanvasTexture {
  * shared across instances (you can build many meshes that all reference it
  * — disposal is centralized in `disposeSharedGolfBallAssets`).
  *
- * The current `golf_ball.glb` is a low-poly base sphere (~960 tris, no
- * baked dimple geometry). We therefore still apply the procedural dimple
- * normal map on top — the GLB gives us authentic UVs / topology, the normal
- * map gives us the highlight pattern that makes it read as a golf ball.
- * If a future model has dimples baked into geometry, pass
- * `useDimpleMap: false` to skip the perturbation.
+ * Backwards-compat: this is now a thin wrapper over `buildBallMesh` from
+ * `golfAndTee.ts`. The combined GLB carries real dimple geometry, so we
+ * default `useDimpleMap` to false (the matcap pattern follows actual mesh
+ * normals).
  *
  * Apply stencil props on the returned material from the call site (Hero uses
  * ref=1; Contact uses none).
@@ -500,74 +396,29 @@ function getSharedDimpleTexture(): THREE.CanvasTexture {
 export async function buildGolfBallMeshFromGLB(
   matcap: THREE.Texture,
   options?: GolfBallMaterialOptions,
-  url: string = '/models/golf_ball.glb'
+  url?: string
 ): Promise<GolfBallMeshResult> {
-  const geometry = await loadGolfBallGeometry(url);
-  // Default to dimple-on (low-poly GLB needs the normal map for highlight
-  // detail). Caller can opt out via `options.useDimpleMap = false` once the
-  // GLB carries real dimple geometry.
-  const useDimpleMap = options?.useDimpleMap ?? true;
-  const dimple = useDimpleMap ? getSharedDimpleTexture() : null;
-  const material = buildGolfBallMaterial(matcap, dimple, { ...options, useDimpleMap });
-  const dimpledMesh = new THREE.Mesh(geometry, material);
-  dimpledMesh.frustumCulled = false;
-
-  // ── Inner fill sphere ──────────────────────────────────────────────────
-  // The high-poly dimpled GLB has many triangles inside dimple cavities
-  // whose normals face away from the camera. With FrontSide rendering those
-  // triangles are culled, leaving small holes that read as "transparent" /
-  // "hollow" against the dark page backdrop (issue #1 from user feedback).
-  // Solving this with DoubleSide produces nasty back-face overdraw that
-  // overwrites the front-face matcap shading.
-  //
-  // Instead: nest a slightly smaller solid pearl-matcap sphere inside the
-  // dimpled shell. The dimpled mesh's culled holes now reveal the inner
-  // pearl sphere instead of the dark backdrop, so the ball reads as
-  // uniformly white from any angle. The 0.965× radius leaves enough room
-  // for the dimple geometry to still be visible as surface detail.
-  const fillGeom = new THREE.SphereGeometry(0.5 * 0.965, 64, 48);
-  const fillMaterial = buildGolfBallMaterial(matcap, null, {
-    ...options,
-    useDimpleMap: false,
-    // Push the inner sphere fully toward camera-facing matcap so it acts
-    // as a pure "white pearl" backdrop rather than its own shaded sphere.
-    matcapSoftness: 1.0,
-    rimStrength: 0.0,
-    transparent: false,
-  });
-  const fillMesh = new THREE.Mesh(fillGeom, fillMaterial);
-  fillMesh.frustumCulled = false;
-
-  const group = new THREE.Group();
-  // Inner sphere first (renderOrder lower so it draws underneath; depth test
-  // does the rest because it's slightly smaller).
-  fillMesh.renderOrder = -1;
-  group.add(fillMesh);
-  group.add(dimpledMesh);
-
-  // Cast group as a Mesh for backwards compat. Consumers (HeroScene,
-  // ContactScene) only read .position / .scale / .rotation / etc. — all
-  // present on Object3D / Group. They DO write to material's stencil + alpha
-  // uniforms; we keep `material` pointing at the OUTER dimpled mesh's
-  // material so those writes affect the visible silhouette.
+  void url;
+  // Re-export of the unified builder. Lazy import keeps the module surface
+  // unchanged for callers that only import buildGolfBallMeshFromGLB.
+  const { buildBallMesh } = await import('./golfAndTee');
+  const built = await buildBallMesh(matcap, options);
   return {
-    mesh: group as unknown as THREE.Mesh,
-    material,
-    geometry: geometry as unknown as THREE.SphereGeometry,
-    fillMaterial,
+    mesh: built.mesh,
+    material: built.material,
+    geometry: built.geometry as unknown as THREE.SphereGeometry,
+    fillMaterial: built.fillMaterial,
   };
 }
 
 /**
  * Free the cached GLB geometry (call only on full app teardown — both Hero
  * and Contact share this geometry, so single-scene dispose should NOT call
- * this).
+ * this). Delegates to the unified disposer.
  */
-export function disposeSharedGolfBallAssets(): void {
-  if (_ballGeomCache) {
-    _ballGeomCache.dispose();
-    _ballGeomCache = null;
-  }
+export async function disposeSharedGolfBallAssets(): Promise<void> {
+  const { disposeGolfAndTee } = await import('./golfAndTee');
+  disposeGolfAndTee();
   if (_dummyDimpleTex) {
     _dummyDimpleTex.dispose();
     _dummyDimpleTex = null;

@@ -3,8 +3,11 @@ import type { SceneModule } from '../SceneManager';
 import type { ScrollManager } from '@core/ScrollManager';
 import { elementToWorld, elementToWorldSize } from '@core/ScreenToWorld';
 import { getUserPrefs } from '@core/UserPrefs';
-import { loadGolfBallGeometry, buildGolfBallMaterial } from '../shared/golfBall';
-import { loadGolfTeeGeometry, getTeeMetrics } from '../shared/tee';
+import {
+  buildBallAndTeeGroup,
+  detachBallForLaunch,
+  type BuildBallAndTeeGroupResult,
+} from '../shared/golfAndTee';
 
 /**
  * FlythroughScene — WebGL ball + tee that track the existing CSS-driven
@@ -18,11 +21,11 @@ import { loadGolfTeeGeometry, getTeeMetrics } from '../shared/tee';
  * there. Visual size is derived from the DOM rect so the WebGL meshes scale in
  * lock-step with the CSS keyframes (rest → big mid-flight → exit shrink).
  *
- * The CSS divs themselves are visually hidden via `src/style.css` rules keyed
- * off `.webgl-ready` (set by HeroScene). We keep the DOM boxes in layout (the
- * `.fly-ball-wrap` is `position:absolute; will-change: transform` and only the
- * inner `.fly-ball` div carries the `ball.svg` background) so
- * `getBoundingClientRect` still returns the animated positions.
+ * The combined `GolfAndTee.glb` provides BOTH the ball and the tee in a single
+ * file. While the ball is "at rest" (CSS positions of #flyBall and #tee
+ * coincide), we use the ball-on-tee combined Group. Once the CSS animation
+ * launches the ball away from the tee, we DETACH the ball from the Group with
+ * `detachBallForLaunch` so the tee stays put and the ball flies free.
  *
  * Mobile / reduced-motion path: render nothing — the existing CSS animation
  * handles those cases unchanged.
@@ -31,7 +34,7 @@ import { loadGolfTeeGeometry, getTeeMetrics } from '../shared/tee';
 /** World-units in front of the camera for the flythrough plane. Matches Hero. */
 const FLY_DEPTH = 5;
 
-/** Ratio of the GLB tee's normalized bounding-sphere radius (0.5) — tee
+/** Ratio of the GLB tee's normalized bounding-box height (0.6) — tee
  * geometry is taller than wide, so visually the on-screen "ball-like" radius
  * isn't 0.5 world units. Empirical compensation when scaling from DOM size. */
 const TEE_VISUAL_GAIN = 1.6;
@@ -42,12 +45,24 @@ const BALL_IDLE_SPIN = 0.6;
 /** Same PRE constant the inline JS uses (search index.html for `const PRE`). */
 const PRE_IMPACT_SP = 0.06;
 
-/** Shockwave + particle config — desktop only. */
+/** Pixel threshold — when the CSS ball/tee rect centers diverge by MORE than
+ *  this in screen-space, we treat the ball as "launched" and detach it from
+ *  the combined group. Lower = launches sooner (felt right at 30-40px). */
+const LAUNCH_DIVERGENCE_PX = 30;
+
+/** Shockwave + particle + smoke + lightray config — desktop only. */
 const SHOCKWAVE_DURATION_S = 0.6;     // 600ms ring expand
-const SHOCKWAVE_MAX_RADIUS = 1.5;     // world units
-const PARTICLE_COUNT = 40;
-const PARTICLE_DURATION_S = 0.85;     // 850ms particle life
-const PARTICLE_MAX_SPEED = 2.6;       // world units/s
+const SHOCKWAVE_MAX_RADIUS = 1.5;
+const PARTICLE_COUNT = 28;            // trimmed (was 40); smoke + rays add bulk
+const PARTICLE_DURATION_S = 0.85;
+const PARTICLE_MAX_SPEED = 2.6;
+const SMOKE_COUNT_DESKTOP = 24;
+const SMOKE_COUNT_MOBILE = 12;
+const SMOKE_DURATION_S = 1.2;
+const SMOKE_MAX_SIZE = 0.6;           // world-unit final radius per puff (kept for tuning reference)
+const LIGHTRAY_COUNT = 18;
+const LIGHTRAY_DURATION_S = 0.55;
+const LIGHTRAY_MAX_LENGTH = 1.2;
 
 function isMobileViewport(): boolean {
   if (typeof window === 'undefined') return false;
@@ -64,24 +79,25 @@ export class FlythroughScene implements SceneModule {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly scrollManager: ScrollManager;
 
-  private ballMesh: THREE.Mesh | null = null;
-  private ballMaterial: THREE.ShaderMaterial | null = null;
-  /** Inner fill sphere — fills culled-cavity gaps (issue #1). */
-  private ballFillMesh: THREE.Mesh | null = null;
-  private ballFillMaterial: THREE.ShaderMaterial | null = null;
+  /** Scene the FX get attached to — captured in init() for `detachBallForLaunch`. */
+  private scene: THREE.Scene | null = null;
+
+  /** Combined ball+tee group (returned by `buildBallAndTeeGroup`). When the
+   *  ball is launched, we re-parent the ball mesh OUT of `combined.group` and
+   *  into the scene root with its world matrix preserved. The tee mesh stays
+   *  inside `combined.group`. */
+  private combined: BuildBallAndTeeGroupResult | null = null;
+  /** True after `detachBallForLaunch` has fired this section-cycle. Reset when
+   *  the section leaves view OR sectionProgress drops back below pre-impact. */
+  private ballDetached = false;
+
   private matcapTex: THREE.Texture | null = null;
 
-  private teeMesh: THREE.Mesh | null = null;
-  private teeMaterial: THREE.MeshLambertMaterial | null = null;
-
-  // Lights for the tee's Lambert material. Ball uses an unlit matcap shader so
-  // it doesn't need these — but we still add them to the scene because Three
-  // shares lights across all materials in the scene graph.
+  // Lights for the tee's Lambert material.
   private teeLight: THREE.DirectionalLight | null = null;
   private teeAmbient: THREE.AmbientLight | null = null;
 
-  // DOM anchors (resolved in init). Null-tolerant — soft-fail if the section
-  // markup is missing (we just stop ticking).
+  // DOM anchors (resolved in init).
   private flythroughEl: HTMLElement | null = null;
   private flyBallEl: HTMLElement | null = null;
   private teeEl: HTMLElement | null = null;
@@ -89,21 +105,27 @@ export class FlythroughScene implements SceneModule {
   private bailed = false;
   private timeSec = 0;
   private tmpVec3 = new THREE.Vector3();
+  private tmpVec3b = new THREE.Vector3();
 
-  // ── Shockwave + particle FX (desktop only — issue #2c) ──────────────────
-  /** Expanding ring at the impact point. */
+  // ── Impact FX (desktop only) ────────────────────────────────────────────
   private shockwaveMesh: THREE.Mesh | null = null;
   private shockwaveMaterial: THREE.ShaderMaterial | null = null;
-  /** Particles emitted radially from the impact point. */
   private particleMesh: THREE.Points | null = null;
   private particleMaterial: THREE.ShaderMaterial | null = null;
-  // (Per-particle direction + speed are baked into the BufferGeometry's
-  // aDir + aSpeed attributes at init — no per-frame CPU read needed.)
+  private smokeMesh: THREE.Points | null = null;
+  private smokeMaterial: THREE.ShaderMaterial | null = null;
+  private lightrayMesh: THREE.Mesh | null = null;
+  private lightrayMaterial: THREE.ShaderMaterial | null = null;
   /** Time elapsed since the most recent impact trigger. -1 = inactive. */
   private impactElapsed = -1;
-  /** True while sectionProgress is in the impact band; latches to false after
-   *  the first trigger so we don't retrigger every frame inside the band. */
   private impactArmed = true;
+
+  /** Track impact-x/z so the FX nodes can be re-anchored each trigger. */
+  private impactX = 0;
+  private impactZ = 0;
+
+  /** Used to detect "launch" — the screen-space center of the CSS tee. */
+  private lastTeeScreenY = 0;
 
   constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
@@ -111,9 +133,8 @@ export class FlythroughScene implements SceneModule {
   }
 
   async init(scene: THREE.Scene): Promise<void> {
-    // Resolve DOM anchors first. If the section isn't present (shouldn't
-    // happen in production, but keeps this scene robust during tear-down),
-    // bail without loading meshes.
+    this.scene = scene;
+
     this.flythroughEl = document.getElementById('flythrough');
     this.flyBallEl = document.getElementById('flyBall');
     this.teeEl = document.getElementById('tee');
@@ -126,17 +147,11 @@ export class FlythroughScene implements SceneModule {
       return;
     }
 
-    // Skip GPU work entirely on mobile + reduced-motion. The CSS animation
-    // continues to play (it's all GPU-cheap transforms on the pre-existing
-    // DOM elements) and the CSS sphere/tee remain visible because we only
-    // hide them under `.webgl-ready` AND when this scene is active.
     if (isMobileViewport() || getUserPrefs().reducedMotion) {
       this.bailed = true;
       return;
     }
 
-    // Matcap for the ball — same texture other scenes already preload via the
-    // App.preloadMatcap path, so this is a cache hit at runtime.
     const loader = new THREE.TextureLoader();
     this.matcapTex = loader.load('/textures/matcap-pearl.png');
     this.matcapTex.colorSpace = THREE.SRGBColorSpace;
@@ -144,354 +159,504 @@ export class FlythroughScene implements SceneModule {
     this.matcapTex.magFilter = THREE.LinearFilter;
     this.matcapTex.generateMipmaps = true;
 
-    // Ball — share the cached GLB geometry with Hero + Contact. The geometry
-    // is normalized to bounding-sphere radius 0.5; per-frame visual scale
-    // comes from the CSS rect size.
-    const ballGeom = await loadGolfBallGeometry();
-    this.ballMaterial = buildGolfBallMaterial(this.matcapTex, null, {
+    // Build the combined ball+tee group from the unified GLB. The ball mesh
+    // sits at `ballOffset` inside the tee's group; per-frame we'll either
+    // (a) anchor `combined.group` to the tee's CSS rect (ball at rest), or
+    // (b) detach the ball into the scene root and anchor it to #flyBall while
+    // the tee stays parented to `combined.group` at #tee.
+    this.combined = await buildBallAndTeeGroup(this.matcapTex, {
       rimStrength: 0.45,
       rimColor: new THREE.Color(0x9ec3d6),
-      // Real dimples are baked into the GLB — let the matcap follow the actual
-      // mesh normals (matches Hero + Contact).
       useDimpleMap: false,
-      // Soften matcap toward camera so dimple cavities don't read as black pits.
       matcapSoftness: 0.55,
     });
-    // Wrap the dimpled GLB mesh + an inner fill sphere into a Group. The
-    // inner sphere closes the small gaps left by FrontSide-culled dimple
-    // cavities so the ball reads as a uniform white pearl (issue #1).
-    const dimpledMesh = new THREE.Mesh(ballGeom, this.ballMaterial);
-    dimpledMesh.frustumCulled = false;
-    const fillGeom = new THREE.SphereGeometry(0.5 * 0.965, 64, 48);
-    this.ballFillMaterial = buildGolfBallMaterial(this.matcapTex, null, {
-      useDimpleMap: false,
-      matcapSoftness: 1.0,
-      rimStrength: 0.0,
-    });
-    this.ballFillMesh = new THREE.Mesh(fillGeom, this.ballFillMaterial);
-    this.ballFillMesh.frustumCulled = false;
-    this.ballFillMesh.renderOrder = -1;
-    const ballGroup = new THREE.Group();
-    ballGroup.add(this.ballFillMesh);
-    ballGroup.add(dimpledMesh);
-    // Cast group as Mesh so the rest of the class (which reads .position /
-    // .scale / .visible / .rotation) works unchanged.
-    this.ballMesh = ballGroup as unknown as THREE.Mesh;
-    (this.ballMesh as unknown as THREE.Object3D).visible = false;
-    scene.add(this.ballMesh);
+    this.combined.group.visible = false;
+    scene.add(this.combined.group);
 
-    // Tee — load GLB; apply a warm wood-toned Lambert material. We keep this
-    // material monochrome / restrained per the brand rules: warm brown, no
-    // emissive glow, no neon. The accent rim stays on the ball alone.
-    const teeGeom = await loadGolfTeeGeometry();
-    this.teeMaterial = new THREE.MeshLambertMaterial({
-      color: 0xb88a55,           // warm wood brown
-      emissive: 0x000000,
-    });
-    this.teeMesh = new THREE.Mesh(teeGeom, this.teeMaterial);
-    this.teeMesh.frustumCulled = false;
-    this.teeMesh.visible = false;
-    scene.add(this.teeMesh);
-
-    // Lights for the tee. Ambient + a single key light from the upper-left so
-    // the wood-grain shading reads as 3D rather than flat. Ball is unlit so
-    // these don't affect it.
+    // Lights for the tee. Ambient + a single key light from the upper-left.
     this.teeAmbient = new THREE.AmbientLight(0xffffff, 0.55);
     this.teeLight = new THREE.DirectionalLight(0xfff1d6, 0.85);
     this.teeLight.position.set(-3, 5, 4);
     scene.add(this.teeAmbient);
     scene.add(this.teeLight);
 
-    // ── Shockwave ring (issue #2c) ──────────────────────────────────────
-    // Expanding ring centered on the impact point. Custom shader animates
-    // radius via uProgress so we don't need to rebuild geometry. Disc fades
-    // from a thin 1.0-opacity ring at p=0 to a fat 0.0-opacity ring at p=1.
-    {
-      const ringGeom = new THREE.PlaneGeometry(2, 2, 1, 1);
-      const ringMat = new THREE.ShaderMaterial({
-        uniforms: {
-          uProgress: { value: 0.0 },
-          uColor: { value: new THREE.Color(0xff6a00) }, // accent orange
-        },
-        vertexShader: /* glsl */`
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: /* glsl */`
-          precision highp float;
-          uniform float uProgress;
-          uniform vec3 uColor;
-          varying vec2 vUv;
-          void main() {
-            // distance from center [0..1]
-            vec2 c = vUv - 0.5;
-            float r = length(c) * 2.0;
-            // Ring radius grows with progress. Thickness shrinks slightly as
-            // it expands so the wave reads as "energy dissipating outward".
-            float ringR = uProgress;
-            float thickness = mix(0.18, 0.06, uProgress);
-            float band = 1.0 - smoothstep(thickness, thickness + 0.04, abs(r - ringR));
-            // Fade out over time + clip when r > 1 (outside disc).
-            float life = 1.0 - uProgress;
-            float alpha = band * life * step(r, 1.0);
-            // Soft inner glow blends into the band.
-            vec3 col = uColor + vec3(0.4) * pow(life, 2.0);
-            gl_FragColor = vec4(col, alpha);
-          }
-        `,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      this.shockwaveMesh = new THREE.Mesh(ringGeom, ringMat);
-      this.shockwaveMesh.frustumCulled = false;
-      this.shockwaveMesh.visible = false;
-      this.shockwaveMaterial = ringMat;
-      scene.add(this.shockwaveMesh);
-    }
+    // ── Shockwave ring ──────────────────────────────────────────────────
+    this.buildShockwave(scene);
+    // ── Particle burst ──────────────────────────────────────────────────
+    this.buildParticles(scene);
+    // ── Smoke cloud ─────────────────────────────────────────────────────
+    this.buildSmoke(scene);
+    // ── Light rays ──────────────────────────────────────────────────────
+    this.buildLightRays(scene);
 
-    // ── Particle burst (issue #2c) ──────────────────────────────────────
-    // 40 additive points emitted radially from the impact point. Uses a
-    // ShaderMaterial with per-frame `uTime` driving each particle's offset
-    // along its baked direction. Cheap, no per-frame attribute updates.
-    {
-      const positions = new Float32Array(PARTICLE_COUNT * 3); // base = origin
-      const dirs = new Float32Array(PARTICLE_COUNT * 3);
-      const speeds = new Float32Array(PARTICLE_COUNT);
-      const sizes = new Float32Array(PARTICLE_COUNT);
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const ang = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.4;
-        // Bias direction slightly toward upper hemisphere (the "splatter"
-        // pattern of a ball hit reads better when most particles fly up).
-        const yBias = Math.random() * 0.6 + 0.1; // [0.1, 0.7]
-        dirs[i * 3 + 0] = Math.cos(ang);
-        dirs[i * 3 + 1] = yBias;
-        dirs[i * 3 + 2] = Math.sin(ang) * 0.3;
-        // Normalize.
-        const len = Math.hypot(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]);
-        dirs[i * 3] /= len;
-        dirs[i * 3 + 1] /= len;
-        dirs[i * 3 + 2] /= len;
-        speeds[i] = (0.5 + Math.random() * 0.5) * PARTICLE_MAX_SPEED;
-        sizes[i] = 16 + Math.random() * 24; // px size at DPR=1
-      }
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geom.setAttribute('aDir', new THREE.BufferAttribute(dirs, 3));
-      geom.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
-      geom.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-      const mat = new THREE.ShaderMaterial({
-        uniforms: {
-          uTime: { value: 0.0 },     // seconds since impact
-          uDuration: { value: PARTICLE_DURATION_S },
-          uColor: { value: new THREE.Color(0xff8a3a) },
-        },
-        vertexShader: /* glsl */`
-          attribute vec3 aDir;
-          attribute float aSpeed;
-          attribute float aSize;
-          uniform float uTime;
-          uniform float uDuration;
-          varying float vLife; // 1=just born, 0=expired
-          void main() {
-            float t = clamp(uTime / uDuration, 0.0, 1.0);
-            // Ease-out distance: fast initial spread, slows down. Drag.
-            float d = aSpeed * (1.0 - exp(-3.5 * t));
-            // Gravity bias in -Y over time so rising particles arc back.
-            vec3 offset = aDir * d + vec3(0.0, -0.9 * t * t, 0.0);
-            vec3 worldPos = position + offset;
-            vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
-            gl_Position = projectionMatrix * mv;
-            // Perspective-corrected size so particles shrink with distance.
-            gl_PointSize = aSize * (300.0 / max(0.1, -mv.z));
-            vLife = 1.0 - t;
-          }
-        `,
-        fragmentShader: /* glsl */`
-          precision highp float;
-          uniform vec3 uColor;
-          varying float vLife;
-          void main() {
-            vec2 c = gl_PointCoord - 0.5;
-            float r = length(c);
-            // Soft radial alpha — bright core, fading edge.
-            float a = smoothstep(0.5, 0.0, r) * vLife;
-            vec3 col = mix(vec3(1.0, 0.85, 0.5), uColor, 1.0 - vLife);
-            gl_FragColor = vec4(col, a);
-          }
-        `,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      this.particleMaterial = mat;
-      this.particleMesh = new THREE.Points(geom, mat);
-      this.particleMesh.frustumCulled = false;
-      this.particleMesh.visible = false;
-      scene.add(this.particleMesh);
-    }
-
-    // Tell CSS to hide the .fly-ball SVG and .tee SVG visuals (we keep their
-    // layout boxes for getBoundingClientRect anchoring). Gate is `.flythrough-3d`
-    // on <html> rather than the existing `.webgl-ready` so mobile + reduced-
-    // motion fallbacks (which bail before this point) keep their CSS visuals.
     document.documentElement.classList.add('flythrough-3d');
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // FX builders
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildShockwave(scene: THREE.Scene): void {
+    const ringGeom = new THREE.PlaneGeometry(2, 2, 1, 1);
+    const ringMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uProgress: { value: 0.0 },
+        uColor: { value: new THREE.Color(0xff6a00) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        uniform float uProgress;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        void main() {
+          vec2 c = vUv - 0.5;
+          float r = length(c) * 2.0;
+          float ringR = uProgress;
+          float thickness = mix(0.18, 0.06, uProgress);
+          float band = 1.0 - smoothstep(thickness, thickness + 0.04, abs(r - ringR));
+          float life = 1.0 - uProgress;
+          float alpha = band * life * step(r, 1.0);
+          vec3 col = uColor + vec3(0.4) * pow(life, 2.0);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.shockwaveMesh = new THREE.Mesh(ringGeom, ringMat);
+    this.shockwaveMesh.frustumCulled = false;
+    this.shockwaveMesh.visible = false;
+    this.shockwaveMaterial = ringMat;
+    scene.add(this.shockwaveMesh);
+  }
+
+  private buildParticles(scene: THREE.Scene): void {
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const dirs = new Float32Array(PARTICLE_COUNT * 3);
+    const speeds = new Float32Array(PARTICLE_COUNT);
+    const sizes = new Float32Array(PARTICLE_COUNT);
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const ang = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.4;
+      const yBias = Math.random() * 0.6 + 0.1;
+      dirs[i * 3 + 0] = Math.cos(ang);
+      dirs[i * 3 + 1] = yBias;
+      dirs[i * 3 + 2] = Math.sin(ang) * 0.3;
+      const len = Math.hypot(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]);
+      dirs[i * 3] /= len;
+      dirs[i * 3 + 1] /= len;
+      dirs[i * 3 + 2] /= len;
+      speeds[i] = (0.5 + Math.random() * 0.5) * PARTICLE_MAX_SPEED;
+      sizes[i] = 16 + Math.random() * 24;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('aDir', new THREE.BufferAttribute(dirs, 3));
+    geom.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+    geom.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0.0 },
+        uDuration: { value: PARTICLE_DURATION_S },
+        uColor: { value: new THREE.Color(0xff8a3a) },
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 aDir;
+        attribute float aSpeed;
+        attribute float aSize;
+        uniform float uTime;
+        uniform float uDuration;
+        varying float vLife;
+        void main() {
+          float t = clamp(uTime / uDuration, 0.0, 1.0);
+          float d = aSpeed * (1.0 - exp(-3.5 * t));
+          vec3 offset = aDir * d + vec3(0.0, -0.9 * t * t, 0.0);
+          vec3 worldPos = position + offset;
+          vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = aSize * (300.0 / max(0.1, -mv.z));
+          vLife = 1.0 - t;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        uniform vec3 uColor;
+        varying float vLife;
+        void main() {
+          vec2 c = gl_PointCoord - 0.5;
+          float r = length(c);
+          float a = smoothstep(0.5, 0.0, r) * vLife;
+          vec3 col = mix(vec3(1.0, 0.85, 0.5), uColor, 1.0 - vLife);
+          gl_FragColor = vec4(col, a);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.particleMaterial = mat;
+    this.particleMesh = new THREE.Points(geom, mat);
+    this.particleMesh.frustumCulled = false;
+    this.particleMesh.visible = false;
+    scene.add(this.particleMesh);
+  }
+
+  private buildSmoke(scene: THREE.Scene): void {
+    const count = isMobileViewport() ? SMOKE_COUNT_MOBILE : SMOKE_COUNT_DESKTOP;
+    const positions = new Float32Array(count * 3);
+    const dirs = new Float32Array(count * 3);
+    const speeds = new Float32Array(count);
+    const sizes = new Float32Array(count);
+    const seeds = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      // Mostly upward + outward. Random hemisphere bias.
+      const azim = Math.random() * Math.PI * 2;
+      const elev = Math.random() * 0.7 + 0.2; // skew upward
+      const cx = Math.cos(elev) * Math.cos(azim);
+      const cy = Math.sin(elev);
+      const cz = Math.cos(elev) * Math.sin(azim);
+      const len = Math.hypot(cx, cy, cz);
+      dirs[i * 3 + 0] = cx / len;
+      dirs[i * 3 + 1] = cy / len;
+      dirs[i * 3 + 2] = cz / len;
+      // Larger initial spread velocity so puffs separate quickly.
+      speeds[i] = 0.7 + Math.random() * 0.8;
+      sizes[i] = 2 + Math.random() * 3; // base px (perspective-amplified by ~40×)
+      seeds[i] = Math.random();
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('aDir', new THREE.BufferAttribute(dirs, 3));
+    geom.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+    geom.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+    geom.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0.0 },
+        uDuration: { value: SMOKE_DURATION_S },
+        uMaxSize: { value: SMOKE_MAX_SIZE },
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 aDir;
+        attribute float aSpeed;
+        attribute float aSize;
+        attribute float aSeed;
+        uniform float uTime;
+        uniform float uDuration;
+        varying float vLife;
+        varying float vSeed;
+        void main() {
+          float t = clamp(uTime / uDuration, 0.0, 1.0);
+          // Drag: pos += dir*speed*(1-exp(-2t)) + slow upward drift.
+          float drag = 1.0 - exp(-2.0 * t);
+          vec3 offset = aDir * aSpeed * drag + vec3(0.0, 0.30 * t, 0.0);
+          vec3 worldPos = position + offset;
+          vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
+          gl_Position = projectionMatrix * mv;
+          // Size grows with t (puffs expand as smoke dissipates).
+          float sz = aSize * mix(0.4, 1.0, t);
+          // 200/depth keeps puffs at a few-hundred-pixel radius at FLY_DEPTH=5.
+          gl_PointSize = sz * (200.0 / max(0.1, -mv.z));
+          vLife = 1.0 - t;
+          vSeed = aSeed;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        varying float vLife;
+        varying float vSeed;
+        // Soft radial alpha — Gaussian-ish falloff so puffs blend into clouds.
+        void main() {
+          vec2 c = gl_PointCoord - 0.5;
+          float r2 = dot(c, c);
+          float a = exp(-r2 * 14.0); // soft edge
+          // Warm gray-white for the leading edge; cooler at later life.
+          vec3 warm = vec3(0.95, 0.92, 0.85);
+          vec3 cool = vec3(0.55, 0.55, 0.62);
+          vec3 col = mix(cool, warm, vLife);
+          // Slight per-particle color jitter via seed.
+          col += (vSeed - 0.5) * 0.05;
+          // Alpha capped low so overlapping puffs still let underlying
+          // scene + additive light rays bleed through. Smoke is a SOFT
+          // accent on top of the brighter ray + particle effects.
+          float alpha = a * vLife * 0.18;
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      // NormalBlending so the smoke reads as opaque puffs rather than
+      // "additive light blob". Combined with low per-pixel alpha + multiple
+      // overlapping sprites, this mimics volumetric smoke.
+      blending: THREE.NormalBlending,
+    });
+    this.smokeMaterial = mat;
+    this.smokeMesh = new THREE.Points(geom, mat);
+    this.smokeMesh.frustumCulled = false;
+    this.smokeMesh.visible = false;
+    // Render before light rays so additive rays sit on top.
+    this.smokeMesh.renderOrder = 0;
+    scene.add(this.smokeMesh);
+  }
+
+  private buildLightRays(scene: THREE.Scene): void {
+    // 16 spokes, each a thin elongated PLANE rather than a 1-px Line (WebGL
+    // ignores LineWidth on most GPUs). Each plane is a quad with 4 verts +
+    // 2 tris; per-vertex attrs encode direction along the spoke axis and a
+    // half-width offset perpendicular to it. Vertex shader places vertex at
+    // (root + dir*length*along + cross*half_width) so the plane stays
+    // billboarded along its tangent at any camera angle.
+    const N = LIGHTRAY_COUNT;
+    const VERTS_PER_SPOKE = 4;
+    const TRIS_PER_SPOKE = 2;
+    const positions = new Float32Array(N * VERTS_PER_SPOKE * 3);
+    const dirs = new Float32Array(N * VERTS_PER_SPOKE * 3);
+    const along = new Float32Array(N * VERTS_PER_SPOKE);   // 0=root, 1=tip
+    const sideways = new Float32Array(N * VERTS_PER_SPOKE); // -1, +1 for the two sides
+    const stagger = new Float32Array(N * VERTS_PER_SPOKE);
+    const indices: number[] = [];
+    for (let i = 0; i < N; i++) {
+      // Slight angular jitter so spokes don't all sit at uniform spacing —
+      // reads more like real chaotic energy than a math-perfect star pattern.
+      const ang = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.18;
+      // Bias rays mostly outward (into the screen plane); some upward burst.
+      const yBias = (Math.random() - 0.3) * 0.4;
+      const dx = Math.cos(ang);
+      const dz = Math.sin(ang);
+      const dy = yBias;
+      const len = Math.hypot(dx, dy, dz);
+      const ndx = dx / len;
+      const ndy = dy / len;
+      const ndz = dz / len;
+      const ofs = i % 2 === 0 ? 0 : 0.05;
+      // 4 verts per quad: (along=0, side=-1), (along=0, side=+1),
+      //                   (along=1, side=-1), (along=1, side=+1)
+      const baseV = i * VERTS_PER_SPOKE;
+      for (let v = 0; v < 4; v++) {
+        const idx = (baseV + v) * 3;
+        positions[idx] = 0;
+        positions[idx + 1] = 0;
+        positions[idx + 2] = 0;
+        dirs[idx] = ndx;
+        dirs[idx + 1] = ndy;
+        dirs[idx + 2] = ndz;
+        along[baseV + v] = v < 2 ? 0 : 1;
+        sideways[baseV + v] = v % 2 === 0 ? -1 : 1;
+        stagger[baseV + v] = ofs;
+      }
+      // Two triangles per quad: (0,1,2), (1,3,2)
+      indices.push(baseV + 0, baseV + 1, baseV + 2);
+      indices.push(baseV + 1, baseV + 3, baseV + 2);
+      void TRIS_PER_SPOKE;
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute('aDir', new THREE.BufferAttribute(dirs, 3));
+    geom.setAttribute('aAlong', new THREE.BufferAttribute(along, 1));
+    geom.setAttribute('aSide', new THREE.BufferAttribute(sideways, 1));
+    geom.setAttribute('aStagger', new THREE.BufferAttribute(stagger, 1));
+    geom.setIndex(indices);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0.0 },
+        uDuration: { value: LIGHTRAY_DURATION_S },
+        uMaxLen: { value: LIGHTRAY_MAX_LENGTH },
+        uHalfWidth: { value: 0.025 }, // world-units half-thickness of each spoke (thin beams)
+      },
+      vertexShader: /* glsl */ `
+        attribute vec3 aDir;
+        attribute float aAlong;
+        attribute float aSide;
+        attribute float aStagger;
+        uniform float uTime;
+        uniform float uDuration;
+        uniform float uMaxLen;
+        uniform float uHalfWidth;
+        varying float vLife;
+        varying float vAlong;
+        void main() {
+          float t = clamp((uTime - aStagger) / uDuration, 0.0, 1.0);
+          float grow = smoothstep(0.0, 0.4, t);
+          float fade = 1.0 - smoothstep(0.5, 1.0, t);
+          float len = uMaxLen * grow;
+          // Camera-facing side-axis: cross(direction, view-vector). Camera
+          // looks down -Z in world space (default Three.js camera), so
+          // viewDir ≈ vec3(0,0,1) for our purposes. cross(aDir, viewDir)
+          // gives a vector perpendicular to both, lying in the screen plane.
+          vec3 viewDir = vec3(0.0, 0.0, 1.0);
+          vec3 sideAxis = normalize(cross(aDir, viewDir));
+          // Taper: half-width shrinks at tip so spokes look like rays.
+          float taper = mix(1.0, 0.25, aAlong);
+          vec3 worldPos = position + aDir * len * aAlong + sideAxis * (uHalfWidth * taper * aSide);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
+          vLife = fade;
+          vAlong = aAlong;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        varying float vLife;
+        varying float vAlong;
+        void main() {
+          // Bright orange-white core, fading to translucent at the tip.
+          // Tuned so that 16 rays' additive overlap at the impact origin
+          // reads as a hot center without saturating the bloom pass.
+          vec3 core = vec3(1.0, 0.85, 0.55);
+          vec3 edge = vec3(1.0, 0.45, 0.10);
+          float alpha = vLife * (1.0 - vAlong * 0.7) * 0.85;
+          vec3 col = mix(core, edge, vAlong);
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    this.lightrayMaterial = mat;
+    this.lightrayMesh = new THREE.Mesh(geom, mat);
+    this.lightrayMesh.frustumCulled = false;
+    this.lightrayMesh.visible = false;
+    this.lightrayMesh.renderOrder = 1; // above smoke
+    scene.add(this.lightrayMesh);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Per-frame update
+  // ─────────────────────────────────────────────────────────────────────────
+
   update(dt: number): void {
     if (this.bailed) return;
-    if (!this.ballMesh || !this.teeMesh || !this.flyBallEl || !this.teeEl) return;
+    if (!this.combined || !this.flyBallEl || !this.teeEl) return;
 
     this.timeSec += dt;
+    const reducedMotion = getUserPrefs().reducedMotion;
+    const onMobile = isMobileViewport();
 
-    // Perf gate (matches WorkScene / former PursuitsScene): bail when the
-    // section is far off-screen. Hides both meshes so they don't burn GPU.
     const secProgress = this.scrollManager.sectionProgress('flythrough');
     if (secProgress < -0.15 || secProgress > 1.15) {
-      this.ballMesh.visible = false;
-      this.teeMesh.visible = false;
-      if (this.shockwaveMesh) this.shockwaveMesh.visible = false;
-      if (this.particleMesh) this.particleMesh.visible = false;
-      // Re-arm impact trigger so re-entering the section plays the FX again.
+      this.combined.group.visible = false;
+      // Ball might be detached — re-attach it before hiding so next entry
+      // restores ball-on-tee state.
+      this.reattachBallToGroup();
+      this.hideAllFX();
       this.impactArmed = true;
       this.impactElapsed = -1;
       return;
     }
 
-    // Compute flightP / inFlight up-front — both ball and tee use these and
-    // the impact-FX trigger reads them too.
     const flightP = Math.max(
       0,
       Math.min(1, (secProgress - PRE_IMPACT_SP) / (1 - PRE_IMPACT_SP))
     );
     const inFlight = secProgress > PRE_IMPACT_SP;
+    this.combined.group.visible = true;
 
-    // ─── Tee anchor (compute first so we can seat the ball on top of it) ───
-    let teeWorldTopY: number | null = null;
-    let teeWorldRadius = 0;
+    // ── Tee anchor ────────────────────────────────────────────────────────
     const teeRect = this.teeEl.getBoundingClientRect();
-    if (teeRect.width <= 0 || teeRect.height <= 0) {
-      this.teeMesh.visible = false;
-    } else {
+    const ballRect = this.flyBallEl.getBoundingClientRect();
+    let teeWorldTopY: number | null = null;
+    let teeMeshScale = 1;
+    if (teeRect.width > 0 && teeRect.height > 0) {
       elementToWorld(this.teeEl, this.camera, FLY_DEPTH, this.tmpVec3);
-      this.teeMesh.position.copy(this.tmpVec3);
+      // Anchor the COMBINED group on the tee's screen position. Since the tee
+      // mesh is at (0,0,0) inside the group, group.position = tee world pos.
+      this.combined.group.position.copy(this.tmpVec3);
 
       const teeSize = elementToWorldSize(this.teeEl, this.camera, FLY_DEPTH);
-      // The CSS tee div is taller than wide (48×144 px); scale so mesh
-      // height matches the world-height of the rect. GLB bounding-sphere
-      // is normalized to 0.5, so a height H → scale = (H / (2 * 0.5)) =
-      // H — but the mesh needs a slight gain so the visual silhouette
-      // reads like the original SVG tee.
-      const meshScale = teeSize.height * TEE_VISUAL_GAIN;
-      this.teeMesh.scale.setScalar(meshScale);
+      teeMeshScale = teeSize.height * TEE_VISUAL_GAIN;
+      this.combined.group.scale.setScalar(teeMeshScale);
 
-      // Tilt the tee like the CSS does post-impact (issue #2a fix lives in
-      // tee.ts loader — base-down/tip-up canonical orientation). The
-      // post-impact rotation is layered on top of that canonical pose.
+      // Tilt the tee + ball during flight (CSS does the same).
       const tiltDeg = inFlight ? Math.min(45, flightP * 80) : 0;
-      this.teeMesh.rotation.set(0, 0, -(tiltDeg * Math.PI) / 180);
-      // Fade the tee post-impact like CSS (max(0, 1 - flightP*4)); we toggle
-      // visibility under a small threshold so we don't pay for an invisible
-      // mesh.
-      const teeOpacity = inFlight ? Math.max(0, 1 - flightP * 4) : 1;
-      if (this.teeMaterial) {
-        if (teeOpacity < 0.01) {
-          this.teeMesh.visible = false;
-        } else {
-          this.teeMesh.visible = true;
-          const c = this.teeMaterial.color;
-          c.setRGB(0.722 * teeOpacity, 0.541 * teeOpacity, 0.333 * teeOpacity);
-        }
-      }
+      this.combined.group.rotation.set(0, 0, -(tiltDeg * Math.PI) / 180);
 
-      // World top of the tee — base for the ball-on-tee constraint and the
-      // impact-FX origin. Use the geometry metrics computed in tee.ts (topY
-      // is in geometry-local units of bounding-sphere=0.5). When tilted, the
-      // top travels in the negative-X direction (rotation is around z).
-      const metrics = getTeeMetrics();
-      if (metrics) {
-        const localTopY = metrics.topY * meshScale;
-        // Apply z-rotation to the local top vector (0, localTopY, 0).
-        const ang = -(tiltDeg * Math.PI) / 180;
-        const tipDx = -Math.sin(ang) * localTopY;
-        const tipDy = Math.cos(ang) * localTopY;
-        teeWorldTopY = this.teeMesh.position.y + tipDy;
-        // Approx tee top radius as half the bounding-box width's tip portion.
-        // (Used as a sanity for the shockwave ring size — small constant fine.)
-        teeWorldRadius = meshScale * 0.05;
-        // Stash the impact-x for the FX origin.
-        // We use the rotated tip's WORLD position; tipDx offsets relative to
-        // the tee's center.
-        (this as unknown as { _impactX?: number })._impactX =
-          this.teeMesh.position.x + tipDx;
-        (this as unknown as { _impactZ?: number })._impactZ = this.teeMesh.position.z;
-        void teeWorldRadius; // currently unused but kept for future tuning
-      }
+      // Fade the tee post-impact.
+      const teeOpacity = inFlight ? Math.max(0, 1 - flightP * 4) : 1;
+      const c = this.combined.teeMaterial.color;
+      c.setRGB(0.722 * teeOpacity, 0.541 * teeOpacity, 0.333 * teeOpacity);
+      this.combined.teeMesh.visible = teeOpacity >= 0.01;
+
+      // Compute world-space tee tip (= tee's local topY * scale, plus rotation
+      // about Z applied via group). Use the cached metrics from the loader.
+      const offset = this.combined.ballOffset; // local offset pre-rotation
+      // ballOffset.y = teeMetrics.topY + ballRadius - tinyGap, so subtract
+      // ballRadius to get the actual tip Y.
+      const tipLocalY = offset.y - 0.5; // 0.5 = ball radius post-normalize
+      const ang = -(tiltDeg * Math.PI) / 180;
+      const tipDx = -Math.sin(ang) * tipLocalY * teeMeshScale;
+      const tipDy = Math.cos(ang) * tipLocalY * teeMeshScale;
+      teeWorldTopY = this.combined.group.position.y + tipDy;
+      this.impactX = this.combined.group.position.x + tipDx;
+      this.impactZ = this.combined.group.position.z;
+
+      this.lastTeeScreenY = teeRect.top + teeRect.height * 0.5;
+    } else {
+      this.combined.teeMesh.visible = false;
     }
 
-    // ─── Ball anchor ───────────────────────────────────────────────────────
-    const ballRect = this.flyBallEl.getBoundingClientRect();
-    if (ballRect.width <= 0 || ballRect.height <= 0) {
-      this.ballMesh.visible = false;
-    } else {
-      elementToWorld(this.flyBallEl, this.camera, FLY_DEPTH, this.tmpVec3);
-      this.ballMesh.position.copy(this.tmpVec3);
+    // ── Detect launch — divergence between #flyBall and #tee centers ─────
+    const ballCenterY = ballRect.top + ballRect.height * 0.5;
+    const ballCenterX = ballRect.left + ballRect.width * 0.5;
+    const teeCenterX = teeRect.left + teeRect.width * 0.5;
+    const dyPx = Math.abs(ballCenterY - this.lastTeeScreenY);
+    const dxPx = Math.abs(ballCenterX - teeCenterX);
+    const launched =
+      inFlight && (dyPx > LAUNCH_DIVERGENCE_PX || dxPx > LAUNCH_DIVERGENCE_PX);
 
-      // Convert the rect's half-width (in pixels) to world-units at FLY_DEPTH.
-      // The cached GLB has bounding-sphere radius 0.5, so a target world
-      // radius R means mesh.scale = R / 0.5 = R * 2.
+    if (launched && !this.ballDetached) {
+      // Detach the ball into the scene root, preserving its world matrix so
+      // there's no visual snap. The tee stays parented to combined.group.
+      if (this.scene) {
+        detachBallForLaunch(this.combined.group, this.combined.ballMesh, this.scene);
+        this.ballDetached = true;
+      }
+    } else if (!inFlight && this.ballDetached) {
+      // Returning to rest — re-attach the ball before the next launch cycle.
+      this.reattachBallToGroup();
+    }
+
+    // ── Ball anchor (only when launched / detached) ──────────────────────
+    if (this.ballDetached && ballRect.width > 0 && ballRect.height > 0) {
+      // Drive the (now scene-parented) ball mesh from #flyBall directly.
+      elementToWorld(this.flyBallEl, this.camera, FLY_DEPTH, this.tmpVec3b);
+      this.combined.ballMesh.position.copy(this.tmpVec3b);
+
+      // Visual scale matches the CSS rect (ball grows mid-flight, shrinks at exit).
       const ballSize = elementToWorldSize(this.flyBallEl, this.camera, FLY_DEPTH);
       const worldRadius = ballSize.width * 0.5;
-      const meshScale = worldRadius * 2;
-      this.ballMesh.scale.setScalar(meshScale);
+      const meshScale = worldRadius * 2; // (geom is normalized to bounding-sphere 0.5)
+      this.combined.ballMesh.scale.setScalar(meshScale);
+      // Drop any inherited group rotation; pure world-space orientation now.
+      this.combined.ballMesh.rotation.set(0, 0, 0);
 
-      // ── Ball-on-tee constraint (issue #2b) ──────────────────────────────
-      // While we're pre-impact (sectionProgress < PRE), override the ball's
-      // Y so it physically rests on the tee's tip — like a rigid body. The
-      // CSS authored these positions independently and they drift. We use
-      // teeWorldTopY (computed above) plus the ball's actual radius so the
-      // ball's BOTTOM equals the tee's TOP.
-      if (!inFlight && teeWorldTopY !== null) {
-        // Slight downward "settle" so the ball visually sinks into the tip
-        // a hair (1 px in world units) — reads as solid contact.
-        const settle = worldRadius * 0.05;
-        this.ballMesh.position.y = teeWorldTopY + worldRadius - settle;
-        // Mirror the ball's X to the tee tip too — they often disagree by a
-        // few pixels because the CSS .fly-ball wrapper has its own layout
-        // anchor unrelated to the .tee element.
-        const impactX = (this as unknown as { _impactX?: number })._impactX;
-        if (impactX !== undefined) this.ballMesh.position.x = impactX;
-      }
-
-      // Idle spin around Y for visual life. The CSS animation already spins
-      // the inner div via background rotation, but that's hidden now — drive
-      // a real 3D rotation here. Slow at rest, faster when scale is high
-      // (mid-flight).
-      const flightHeat = Math.max(0, meshScale - 0.4); // grows when mid-flight
-      this.ballMesh.rotation.y += dt * (BALL_IDLE_SPIN + flightHeat * 4);
-      this.ballMesh.rotation.x += dt * (BALL_IDLE_SPIN * 0.4 + flightHeat * 1.5);
-      this.ballMesh.visible = true;
+      // Idle spin around Y for visual life.
+      const flightHeat = Math.max(0, meshScale - 0.4);
+      this.combined.ballMesh.rotation.y += dt * (BALL_IDLE_SPIN + flightHeat * 4);
+      this.combined.ballMesh.rotation.x += dt * (BALL_IDLE_SPIN * 0.4 + flightHeat * 1.5);
+      this.combined.ballMesh.visible = true;
+    } else if (!this.ballDetached) {
+      // Ball is parented to the combined group — its local position is the
+      // baked offset; a tiny idle spin in local-Y still reads.
+      this.combined.ballMesh.rotation.y += dt * BALL_IDLE_SPIN;
     }
 
-    // ─── Impact FX trigger + animation (issue #2c) ─────────────────────────
-    // Fire shockwave + particle burst the moment we cross from pre-impact
-    // into flight. impactArmed latches false after firing so we don't
-    // retrigger every frame (it gets re-armed when the section leaves view).
+    // ── Impact FX trigger ────────────────────────────────────────────────
     if (this.impactArmed && inFlight && secProgress < PRE_IMPACT_SP + 0.15) {
       this.impactArmed = false;
       this.impactElapsed = 0;
-      // Pin shockwave + particles to the (now-known) impact point in world space.
-      const impactX = (this as unknown as { _impactX?: number })._impactX ?? 0;
-      const impactZ = (this as unknown as { _impactZ?: number })._impactZ ?? 0;
+      const impactX = this.impactX;
       const impactY = teeWorldTopY ?? 0;
+      const impactZ = this.impactZ;
       if (this.shockwaveMesh) {
         this.shockwaveMesh.position.set(impactX, impactY, impactZ);
-        // Shockwave plane should face the camera (XY plane works because the
-        // camera looks down -Z). Scale will be driven by the shader's
-        // uProgress; we set base mesh scale to the max radius * 2.
         this.shockwaveMesh.scale.setScalar(SHOCKWAVE_MAX_RADIUS * 2);
         this.shockwaveMesh.visible = true;
       }
@@ -499,71 +664,96 @@ export class FlythroughScene implements SceneModule {
         this.particleMesh.position.set(impactX, impactY, impactZ);
         this.particleMesh.visible = true;
       }
+      if (this.smokeMesh && !reducedMotion) {
+        this.smokeMesh.position.set(impactX, impactY, impactZ);
+        this.smokeMesh.visible = true;
+      }
+      // Skip light rays on mobile (heavy fillrate per the brief).
+      if (this.lightrayMesh && !onMobile && !reducedMotion) {
+        this.lightrayMesh.position.set(impactX, impactY, impactZ);
+        this.lightrayMesh.visible = true;
+      }
     }
 
     if (this.impactElapsed >= 0) {
       this.impactElapsed += dt;
-      const swP = Math.min(1, this.impactElapsed / SHOCKWAVE_DURATION_S);
-      const ptP = Math.min(1, this.impactElapsed / PARTICLE_DURATION_S);
       if (this.shockwaveMaterial) {
-        this.shockwaveMaterial.uniforms.uProgress.value = swP;
+        this.shockwaveMaterial.uniforms.uProgress.value = Math.min(
+          1,
+          this.impactElapsed / SHOCKWAVE_DURATION_S
+        );
       }
       if (this.particleMaterial) {
         this.particleMaterial.uniforms.uTime.value = this.impactElapsed;
       }
-      // Hide once both are done.
-      if (swP >= 1) {
-        if (this.shockwaveMesh) this.shockwaveMesh.visible = false;
+      if (this.smokeMaterial) {
+        this.smokeMaterial.uniforms.uTime.value = this.impactElapsed;
       }
-      if (ptP >= 1) {
-        if (this.particleMesh) this.particleMesh.visible = false;
+      if (this.lightrayMaterial) {
+        this.lightrayMaterial.uniforms.uTime.value = this.impactElapsed;
       }
-      if (swP >= 1 && ptP >= 1) {
+      const swDone = this.impactElapsed >= SHOCKWAVE_DURATION_S;
+      const ptDone = this.impactElapsed >= PARTICLE_DURATION_S;
+      const smDone = this.impactElapsed >= SMOKE_DURATION_S;
+      const lrDone = this.impactElapsed >= LIGHTRAY_DURATION_S;
+      if (swDone && this.shockwaveMesh) this.shockwaveMesh.visible = false;
+      if (ptDone && this.particleMesh) this.particleMesh.visible = false;
+      if (smDone && this.smokeMesh) this.smokeMesh.visible = false;
+      if (lrDone && this.lightrayMesh) this.lightrayMesh.visible = false;
+      if (swDone && ptDone && smDone && lrDone) {
         this.impactElapsed = -1;
       }
     }
 
-    // Re-arm if we scroll back BEFORE impact (so the FX play again on next
-    // forward scroll past the impact point).
+    // Re-arm if we scroll back BEFORE impact.
     if (!inFlight && !this.impactArmed) {
       this.impactArmed = true;
       this.impactElapsed = -1;
-      if (this.shockwaveMesh) this.shockwaveMesh.visible = false;
-      if (this.particleMesh) this.particleMesh.visible = false;
+      this.hideAllFX();
     }
   }
 
+  /** Re-parent the ball mesh back into the combined group at its original
+   *  local offset. Called when the section leaves view OR scrolls back below
+   *  pre-impact. */
+  private reattachBallToGroup(): void {
+    if (!this.combined || !this.ballDetached) return;
+    // Object3D.attach handles world→local conversion automatically.
+    this.combined.group.attach(this.combined.ballMesh);
+    // Snap back to the baked offset (in case world-position drift is visible).
+    this.combined.ballMesh.position.copy(this.combined.ballOffset);
+    this.combined.ballMesh.rotation.set(0, 0, 0);
+    this.combined.ballMesh.scale.setScalar(1);
+    this.ballDetached = false;
+  }
+
+  private hideAllFX(): void {
+    if (this.shockwaveMesh) this.shockwaveMesh.visible = false;
+    if (this.particleMesh) this.particleMesh.visible = false;
+    if (this.smokeMesh) this.smokeMesh.visible = false;
+    if (this.lightrayMesh) this.lightrayMesh.visible = false;
+  }
+
   dispose(scene: THREE.Scene): void {
-    if (this.ballMesh) {
-      scene.remove(this.ballMesh);
-      // NOTE: ball geometry is the SHARED GLB cache (loadGolfBallGeometry).
-      // Hero + Contact also reference it — do NOT dispose here. Full teardown
-      // is handled by `disposeSharedGolfBallAssets` at app dispose.
-      this.ballMesh = null;
-    }
-    if (this.ballMaterial) {
-      this.ballMaterial.dispose();
-      this.ballMaterial = null;
-    }
-    if (this.ballFillMesh) {
-      // The fill sphere has its own SphereGeometry (not the shared GLB cache).
-      this.ballFillMesh.geometry.dispose();
-      this.ballFillMesh = null;
-    }
-    if (this.ballFillMaterial) {
-      this.ballFillMaterial.dispose();
-      this.ballFillMaterial = null;
-    }
-    if (this.teeMesh) {
-      scene.remove(this.teeMesh);
-      // Tee geometry is also a shared cache — let the app-level
-      // `disposeSharedTeeAssets` free it (no other consumer today, but the
-      // pattern matches Hero/Contact for consistency and future-proofing).
-      this.teeMesh = null;
-    }
-    if (this.teeMaterial) {
-      this.teeMaterial.dispose();
-      this.teeMaterial = null;
+    if (this.combined) {
+      const c = this.combined;
+      // Reattach so the ball is parented to the group before scene.remove.
+      this.reattachBallToGroup();
+      scene.remove(c.group);
+      c.ballMaterial.dispose();
+      c.ballFillMaterial.dispose();
+      c.teeMaterial.dispose();
+      // Inner fill sphere has its own SphereGeometry — dispose it (the BALL
+      // outer mesh + tee mesh share cached geometries owned by golfAndTee.ts).
+      c.ballMesh.traverse((child) => {
+        const m = child as THREE.Mesh;
+        if (m.isMesh && m.geometry) {
+          // Only dispose the inner fill geom (not the shared cached ball geom).
+          const isShared = m.geometry === c.geometry;
+          if (!isShared) m.geometry.dispose();
+        }
+      });
+      this.combined = null;
     }
     if (this.teeLight) {
       scene.remove(this.teeLight);
@@ -594,6 +784,24 @@ export class FlythroughScene implements SceneModule {
     if (this.particleMaterial) {
       this.particleMaterial.dispose();
       this.particleMaterial = null;
+    }
+    if (this.smokeMesh) {
+      scene.remove(this.smokeMesh);
+      this.smokeMesh.geometry.dispose();
+      this.smokeMesh = null;
+    }
+    if (this.smokeMaterial) {
+      this.smokeMaterial.dispose();
+      this.smokeMaterial = null;
+    }
+    if (this.lightrayMesh) {
+      scene.remove(this.lightrayMesh);
+      this.lightrayMesh.geometry.dispose();
+      this.lightrayMesh = null;
+    }
+    if (this.lightrayMaterial) {
+      this.lightrayMaterial.dispose();
+      this.lightrayMaterial = null;
     }
     document.documentElement.classList.remove('flythrough-3d');
   }

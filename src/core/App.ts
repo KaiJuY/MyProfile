@@ -9,8 +9,7 @@ import { FlythroughScene } from '@scenes/flythrough/FlythroughScene';
 import { WorkScene } from '@scenes/work/WorkScene';
 import { TrajectoryScene } from '@scenes/trajectory/TrajectoryScene';
 import { ContactScene } from '@scenes/contact/ContactScene';
-import { disposeSharedGolfBallAssets } from '@scenes/shared/golfBall';
-import { disposeSharedTeeAssets } from '@scenes/shared/tee';
+import { disposeGolfAndTee } from '@scenes/shared/golfAndTee';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 import { getUserPrefs, type UserPrefs } from './UserPrefs';
@@ -208,12 +207,10 @@ export class App {
   dispose(): void {
     this.stop();
     this.sceneManager.dispose();
-    // Free the shared GLB golf-ball geometry now that all consuming scenes
+    // Free the shared GLB ball+tee geometries now that all consuming scenes
     // are torn down (Hero + Flythrough + Contact all reference the same
-    // cached geom). Tee geometry is shared between Flythrough and any
-    // future tee consumers.
-    disposeSharedGolfBallAssets();
-    disposeSharedTeeAssets();
+    // cached geoms from the unified `GolfAndTee.glb`).
+    disposeGolfAndTee();
     this.scrollManager.destroy();
     this.physics.dispose();
     this.postprocessing.dispose();

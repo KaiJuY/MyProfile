@@ -7,7 +7,7 @@ import type { ScrollManager } from '@core/ScrollManager';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import { getUserPrefs } from '@core/UserPrefs';
 
-import { buildGolfBallMeshFromGLB } from '../shared/golfBall';
+import { buildBallMesh } from '../shared/golfAndTee';
 import { Hole } from './Hole';
 import { GreenSurface } from './GreenSurface';
 
@@ -66,11 +66,13 @@ const DEFAULT_CAMERA_POS = new THREE.Vector3(0, 0, 5);
 const CAMERA_DEFAULT_LOOKAT = new THREE.Vector3(0, 0, 0);
 
 // Anchor target — fraction of half-width / half-height from screen center.
-// Positive x = right, negative y = below center. The actual world coord is
-// recomputed from camera aspect at init() / resize() so the hole stays in the
-// bottom-right corner regardless of viewport.
-const ANCHOR_X_FRACTION = 0.55;   // 55% of half-width to the right
-const ANCHOR_Y_FRACTION = -0.62;  // 62% of half-height below center
+// Positive x = right, positive y = ABOVE center. Issue #3 (user feedback
+// "想要把球滾進洞的動畫放在我們的資訊上方"): hole moved from the bottom-right
+// to the top-center of the contact section. Centered horizontally so the
+// animation feels like a banner above the headline rather than a corner
+// flourish; positive Y so it sits in the upper half of the viewport.
+const ANCHOR_X_FRACTION = 0.0;    // centered horizontally
+const ANCHOR_Y_FRACTION = 0.30;   // 30% of half-height ABOVE center
 
 // Ball geometry
 const BALL_RADIUS = 0.16;
@@ -79,24 +81,28 @@ const BALL_RADIUS = 0.16;
 const HOLE_RIM_RADIUS = 0.36;
 const HOLE_TUBE_RADIUS = 0.018;
 
-// Green-plane footprint (anchored at the hole). Made small enough to read as a
-// vignette around the cup rather than a full backdrop.
-const GREEN_WIDTH = 2.6;
-const GREEN_DEPTH = 1.8;
+// Green-plane footprint (anchored at the hole). Issue #3: the green now sits
+// above the contact text — keep it visually compact so it reads as a banner
+// strip rather than a full background panel.
+const GREEN_WIDTH = 2.2;
+const GREEN_DEPTH = 1.3;
 
 // Ball trajectory expressed as offsets from the hole anchor — recomputed at
 // init/resize together with HOLE_CENTER. Defaults are placeholder; the real
 // values are set inside `recomputeAnchor()`.
-const HOLE_CENTER = new THREE.Vector3(1.85, -1.35, 0);
+const HOLE_CENTER = new THREE.Vector3(0, 1.4, 0);
 const BALL_START = new THREE.Vector3(0, 0, 0);
 const BALL_LAND = new THREE.Vector3(0, 0, 0);
 const BALL_TEETER = new THREE.Vector3(0, 0, 0);
 let BALL_DROP_DEPTH = -2.0;
 
-// Offset shape (relative to HOLE_CENTER). Same trajectory shape as before but
-// scaled smaller to match the new corner footprint.
-const BALL_START_OFFSET = new THREE.Vector3(0.85, 1.85, 0.45);
-const BALL_LAND_OFFSET = new THREE.Vector3(0.45, 0, 0.30);   // .y is HOLE_CENTER.y + BALL_RADIUS, set later
+// Offset shape (relative to HOLE_CENTER). Issue #3: ball still drops from
+// ABOVE the hole (positive Y offset is even larger now since the hole has
+// moved up — we have less room overhead but the start point is still above
+// the cup so the parabolic fall reads correctly). The lateral approach (X)
+// stays modest so the ball lands on the green rather than off-screen.
+const BALL_START_OFFSET = new THREE.Vector3(0.65, 1.30, 0.30);
+const BALL_LAND_OFFSET = new THREE.Vector3(0.40, 0, 0.25);   // .y is HOLE_CENTER.y + BALL_RADIUS, set later
 const BALL_TEETER_OFFSET = new THREE.Vector3(0.18, 0, 0.0);  // .y is HOLE_CENTER.y + BALL_RADIUS, set later
 const BALL_DROP_DEPTH_OFFSET = -0.7;                         // BALL_DROP_DEPTH = HOLE_CENTER.y + this
 
@@ -210,7 +216,7 @@ export class ContactScene implements SceneModule {
     this.matcapTex.magFilter = THREE.LinearFilter;
     this.matcapTex.generateMipmaps = true;
 
-    const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
+    const built = await buildBallMesh(this.matcapTex, {
       rimStrength: 0.45,
       rimColor: new THREE.Color(0x9ec3d6),
       // GLB has real dimple geometry — let the actual mesh normals drive the
@@ -287,20 +293,20 @@ export class ContactScene implements SceneModule {
    * Result: HOLE_CENTER lands at (ANCHOR_X_FRACTION * halfW, ANCHOR_Y_FRACTION
    * * halfH, 0). Trajectory offsets are scaled with HOLE_CENTER so the visual
    * proportions stay consistent at any aspect.
+   *
+   * Issue #3: hole moved to upper-center of the viewport (banner-strip above
+   * the contact info). ANCHOR_X_FRACTION = 0 → centered horizontally;
+   * ANCHOR_Y_FRACTION > 0 → upper portion of the visible region.
    */
   private recomputeAnchor(): void {
     const fovRad = (this.camera.fov * Math.PI) / 180;
     // Visible bounds at z=0 from camera at (0,0,5).
     const halfH = Math.tan(fovRad / 2) * 5;
     const halfW = halfH * this.camera.aspect;
+    void halfW; // not needed — centered horizontally
 
-    // Clamp the X fraction so very narrow viewports don't shove the hole
-    // entirely off-screen on one side. We want at least ~halfW * 0.4 of room
-    // to the right of the hole for the green plane.
-    const minRightRoom = Math.min(halfW, GREEN_WIDTH * 0.55);
-    const maxX = Math.max(halfW * 0.0, halfW - minRightRoom);
-    HOLE_CENTER.x = Math.min(halfW * ANCHOR_X_FRACTION, maxX);
-    HOLE_CENTER.y = halfH * ANCHOR_Y_FRACTION;
+    HOLE_CENTER.x = halfW * ANCHOR_X_FRACTION; // = 0 with current fraction
+    HOLE_CENTER.y = halfH * ANCHOR_Y_FRACTION; // > 0 → above center
     HOLE_CENTER.z = 0;
 
     // Apply offsets relative to HOLE_CENTER.

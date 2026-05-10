@@ -155,62 +155,70 @@ body {
 }
 
 .trajectory-card {
-  /* position/transform/opacity driven by JS — see TrajectoryCard.ts */
-  width: 320px;
-  max-width: 360px;
+  /* Issue #2: bigger card, pinned right of the active ring. Width bumped
+   * 320 → 420; max-width follows. position/transform/opacity driven by JS —
+   * see TrajectoryCard.ts. */
+  width: 420px;
+  max-width: 460px;
   font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
+  /* Establish a stacking context so the inline filter:blur from the
+   * focus-pull transition composites correctly. */
+  perspective: 800px;
 }
 
 /* Each face is a glass-morph card matching `.glass-card` typography in
  * index.html — semi-transparent dark background, hairline border in --line,
- * subtle inner highlight on the top edge. */
+ * subtle inner highlight on the top edge. Issue #2: padding bumped so the
+ * larger card doesn't feel under-filled. */
 .trajectory-card-face {
   background: var(--glass, rgba(20, 22, 26, 0.55));
   border: 1px solid var(--line, rgba(243, 239, 232, 0.10));
-  border-radius: 14px;
-  padding: 20px 22px 18px;
+  border-radius: 16px;
+  padding: 26px 28px 22px;
   -webkit-backdrop-filter: blur(14px) saturate(140%);
           backdrop-filter: blur(14px) saturate(140%);
   box-shadow:
-    0 24px 48px -24px rgba(0, 0, 0, 0.6),
+    0 28px 56px -24px rgba(0, 0, 0, 0.65),
     inset 0 1px 0 rgba(243, 239, 232, 0.06);
-  /* transition / opacity / transform driven inline by TrajectoryCard.ts so
-   * the cross-fade timing stays in one place. */
+  /* transition / opacity / transform / filter driven inline by
+   * TrajectoryCard.ts so the focus-pull timing stays in one place. */
   transform-origin: 50% 50%;
+  /* Slightly hint depth so translate3d(z) reads as actual movement. */
+  transform-style: preserve-3d;
 }
 
 .trajectory-card-year {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 11px;
-  letter-spacing: 0.16em;
+  font-size: 12px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ink-3, rgba(243, 239, 232, 0.38));
-  margin-bottom: 10px;
+  color: var(--ink-3, rgba(243, 239, 232, 0.40));
+  margin-bottom: 12px;
 }
 
 .trajectory-card-title {
-  margin: 0 0 6px;
-  font-size: 18px;
+  margin: 0 0 8px;
+  font-size: 22px;
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink, #f3efe8);
-  line-height: 1.25;
+  line-height: 1.28;
 }
 
 .trajectory-card-org {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent, #FF6A00);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .trajectory-card-text {
-  margin: 0 0 14px;
-  color: var(--ink-2, rgba(243, 239, 232, 0.6));
-  font-size: 12.5px;
-  line-height: 1.55;
+  margin: 0 0 18px;
+  color: var(--ink-2, rgba(243, 239, 232, 0.66));
+  font-size: 14px;
+  line-height: 1.65;
 }
 
 .trajectory-card-tags {
