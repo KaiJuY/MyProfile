@@ -261,6 +261,14 @@ export function buildGolfBallMaterial(
     vertexShader: GOLF_BALL_VERT,
     fragmentShader: GOLF_BALL_FRAG,
     transparent: opts.transparent ?? false,
+    // DoubleSide: belt-and-suspenders for GLB ball geometry. Even though the
+    // closed-sphere picker selects a closed mesh, some Sketchfab / Blender
+    // exports have a handful of triangles with reversed winding inside an
+    // otherwise-closed shell. FrontSide rendering would make those triangles
+    // disappear and let you see THROUGH the ball at that angle. The source
+    // GLB authored these as DoubleSide for the same reason; matching that
+    // intent avoids the "transparent face" failure mode entirely.
+    side: THREE.DoubleSide,
   });
   return mat;
 }
@@ -327,16 +335,27 @@ export async function loadGolfBallGeometry(
   _ballGeomPromise = (async () => {
     const gltf = await loader.loadAsync(url);
 
-    // Collect every mesh's geometry along with its world-space centroid so we
-    // can cluster spatially. Some artist exports include MANY balls scattered
-    // across the scene (LOD copies, material variants, "shop display" arrays);
-    // merging all of them produces a row of tiny balls after normalization.
+    // Collect every mesh's geometry along with its world-space AABB so we can
+    // identify the closed-sphere mesh. Some artist exports include MANY balls
+    // and partial shells (LOD copies, hemispheres, "shop display" arrays).
+    // Merging the wrong subset bakes in HEMISPHERICAL meshes whose AABBs are
+    // flat in one axis (e.g. z-size 113 while x/y are 397) — these read as
+    // "transparent faces" because their open back is exposed.
+    //
+    // Picking strategy: prefer the SINGLE mesh whose AABB is most cube-like
+    // (axis sizes near 1:1:1) — a closed sphere has aspect ratio ~1:1:1, an
+    // open hemisphere is ~1:1:0.5 or worse. Among meshes that meet a "closed
+    // enough" cube-likeness threshold, prefer the one with the most vertices
+    // (highest poly count → highest visual fidelity). This avoids merging
+    // spatially-overlapping partial shells, which was the root cause of the
+    // see-through-face bug.
     interface MeshEntry {
       geom: THREE.BufferGeometry;
       vertCount: number;
-      cx: number;
-      cy: number;
-      cz: number;
+      sx: number;
+      sy: number;
+      sz: number;
+      cubeLikeness: number; // min axis / max axis, 1.0 = perfect cube
     }
     const entries: MeshEntry[] = [];
     gltf.scene.traverse((o) => {
@@ -345,14 +364,21 @@ export async function loadGolfBallGeometry(
         const g = m.geometry.clone();
         m.updateWorldMatrix(true, false);
         g.applyMatrix4(m.matrixWorld);
-        g.computeBoundingSphere();
-        const bs = g.boundingSphere!;
+        g.computeBoundingBox();
+        const bb = g.boundingBox!;
+        const sx = bb.max.x - bb.min.x;
+        const sy = bb.max.y - bb.min.y;
+        const sz = bb.max.z - bb.min.z;
+        const maxAxis = Math.max(sx, sy, sz);
+        const minAxis = Math.max(1e-6, Math.min(sx, sy, sz));
+        const cubeLikeness = minAxis / maxAxis;
         entries.push({
           geom: g,
           vertCount: g.attributes.position?.count ?? 0,
-          cx: bs.center.x,
-          cy: bs.center.y,
-          cz: bs.center.z,
+          sx,
+          sy,
+          sz,
+          cubeLikeness,
         });
       }
     });
@@ -361,63 +387,30 @@ export async function loadGolfBallGeometry(
       throw new Error('golfBall: no mesh found in GLB');
     }
 
-    // Spatial clustering: group meshes whose centroids are within 0.5× the
-    // primary mesh's bounding-sphere radius (i.e., parts of the SAME ball
-    // share a centroid; separate balls are far apart). Pick the cluster with
-    // the most total vertices — that's "the ball the artist intended as the
-    // main subject", or the highest-detail LOD.
-    const primary = entries.reduce((a, b) => (a.vertCount > b.vertCount ? a : b));
-    const primaryR = (primary.geom.boundingSphere?.radius ?? 1) * 0.5;
-    interface Cluster {
-      meshes: MeshEntry[];
-      totalVerts: number;
-      cx: number;
-      cy: number;
-      cz: number;
-    }
-    const clusters: Cluster[] = [];
-    for (const e of entries) {
-      const found = clusters.find(
-        (c) => Math.hypot(c.cx - e.cx, c.cy - e.cy, c.cz - e.cz) < primaryR
-      );
-      if (found) {
-        found.meshes.push(e);
-        found.totalVerts += e.vertCount;
-      } else {
-        clusters.push({
-          meshes: [e],
-          totalVerts: e.vertCount,
-          cx: e.cx,
-          cy: e.cy,
-          cz: e.cz,
-        });
-      }
-    }
-    const winner = clusters.reduce((a, b) => (a.totalVerts > b.totalVerts ? a : b));
+    // Drop trivial helpers (e.g., a 24-vert reference Cube). Below ~1k verts is
+    // not a golf-ball mesh.
+    const realMeshes = entries.filter((e) => e.vertCount > 1000);
+    const candidates = realMeshes.length > 0 ? realMeshes : entries;
 
-    // Merge if multiple meshes inside the winning cluster. Strip non-essential
-    // attributes first so mergeGeometries doesn't choke on mismatched layouts.
-    let geom: THREE.BufferGeometry;
-    if (winner.meshes.length === 1) {
-      geom = winner.meshes[0].geom;
+    // Closed-sphere candidates: cube-likeness >= 0.9 (axes within 10% of each
+    // other). Among them, prefer the highest vertex count.
+    const CLOSED_THRESHOLD = 0.9;
+    const closed = candidates.filter((e) => e.cubeLikeness >= CLOSED_THRESHOLD);
+    let winnerEntry: MeshEntry;
+    if (closed.length > 0) {
+      winnerEntry = closed.reduce((a, b) => (a.vertCount > b.vertCount ? a : b));
     } else {
-      const allowedAttrs = ['position', 'normal', 'uv'];
-      const winnerGeoms = winner.meshes.map((m) => m.geom);
-      for (const g of winnerGeoms) {
-        for (const name of Object.keys(g.attributes)) {
-          if (!allowedAttrs.includes(name)) g.deleteAttribute(name);
-        }
-      }
-      const merged = mergeGeometries(winnerGeoms, false);
-      if (!merged) {
-        const largest = winner.meshes.reduce((a, b) =>
-          a.vertCount > b.vertCount ? a : b
-        );
-        geom = largest.geom;
-      } else {
-        geom = merged;
-      }
+      // No mesh is cube-like — fall back to the MOST cube-like mesh (still
+      // better than merging partial shells, which guaranteed a visible hole).
+      winnerEntry = candidates.reduce((a, b) =>
+        a.cubeLikeness > b.cubeLikeness ? a : b
+      );
     }
+
+    let geom: THREE.BufferGeometry = winnerEntry.geom;
+    // Keep `mergeGeometries` reference live in case we want to re-enable
+    // multi-shell merging behind a flag in the future.
+    void mergeGeometries;
 
     // Center on origin and normalize to bounding-sphere radius 0.5.
     geom.computeBoundingSphere();

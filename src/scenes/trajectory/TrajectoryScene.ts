@@ -343,20 +343,29 @@ export class TrajectoryScene implements SceneModule {
 
     // Compute the target path point and look-ahead point.
     //
-    // Wave 6: pathT is now remapped from a *band* of sectionProgress, not the
-    // raw 0..1 sweep. Reason: with `.timeline` hidden the section is taller
-    // (set in src/style.css to min-height: 220vh) but the user only enters
+    // Wave 6: pathT is remapped from a *band* of sectionProgress, not the raw
+    // 0..1 sweep. Reason: with `.timeline` hidden the section is taller (set
+    // in src/style.css to min-height: 220vh) but the user only enters
     // sectionProgress ≈ 0.31 once the section's bottom hits the viewport
-    // bottom. We want pathT=0 (NYCU) to sit near the FIRST visible-in-viewport
-    // moment, and pathT=1 (past SunSun) near the LAST. So map [0.40, 0.95] →
-    // [0, 1]. Below 0.40 the camera idles at NYCU; above 0.95 it pins past
-    // SunSun for the exit fly-past.
+    // bottom. We want pathT=0 (NYCU) to rest visibly while the heading +
+    // section meta scroll into place, and only THEN start advancing through
+    // milestones. Below SP_START the camera idles at NYCU; above SP_END it
+    // pins past SunSun for the exit fly-past.
+    //
+    // Wave 8 tuning: shifted band from [0.40, 0.95] to [0.55, 0.95] because
+    // the previous start fired the ring-marker animation while the section
+    // heading was still arriving on screen — felt premature. The first ~55%
+    // of the section is now reserved for the heading + meta + first-milestone
+    // anchor; the milestone-to-milestone progression happens during
+    // [0.55, 0.95]. With milestone t-values at {0, 0.25, 0.5, 0.75}, the
+    // transition midpoints land at sp ≈ {0.60, 0.70, 0.81} — well inside the
+    // visible portion of the section, well after the heading has settled.
     //
     // Entry transition: implicit in the damper — current camera is near (0,0,5)
     // when section starts; target is path-start; damper eases.
     // Exit transition: after sp > 0.95 the pathT clamps at 1, camera reads
     // the trailing 5th control point neighbourhood (curve extrapolates).
-    const SP_START = 0.40;
+    const SP_START = 0.55;
     const SP_END = 0.95;
     const pathT = saturate((sp - SP_START) / (SP_END - SP_START));
 
