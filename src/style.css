@@ -119,3 +119,108 @@ body {
 }
 
 
+/* Wave 6 — Trajectory card + timeline takeover.
+ *
+ * On desktop (>900px) when WebGL is mounted, the original `.timeline` block
+ * inside #career is replaced visually by:
+ *   - the WebGL ring markers + grid floor (TrajectoryScene)
+ *   - a single floating `.trajectory-card` pinned to the active marker
+ *
+ * The `.tl-item` DOM stays in place — TrajectoryCard reads year / title / org /
+ * paragraph / tags out of it so language flips work for free. We hide the
+ * `.timeline` *visually* (display:none) rather than visually-hide because the
+ * WebGL/HUD overlay already exposes the same milestone data via the active
+ * card; keeping the original cards laid out under the canvas would double the
+ * visible content and create the clutter the user reported. Trade-off: a
+ * screen reader running on desktop won't read the cards in `.timeline`. The
+ * mobile path retains the original timeline so non-WebGL / smaller viewports
+ * still get the full screen-reader pass.
+ *
+ * Mobile (<=900px): we DON'T hide the timeline — the original scrolling
+ * cards stay as-is and TrajectoryCard is constructed in disabled mode (no DOM
+ * injected, no projection math).
+ */
+@media (min-width: 901px) {
+  .webgl-ready section#career .timeline {
+    display: none;
+  }
+  /* Reserve scroll real estate so the user can scrub through all four
+   * milestones. Without this, hiding `.timeline` collapses the section to
+   * just the header and the trajectory animation flashes through in <half a
+   * viewport. 220vh = roughly the same scroll distance as the original
+   * timeline rendered. */
+  .webgl-ready section#career {
+    min-height: 220vh;
+  }
+}
+
+.trajectory-card {
+  /* position/transform/opacity driven by JS — see TrajectoryCard.ts */
+  width: 320px;
+  max-width: 360px;
+  font-family: 'Inter', 'Noto Sans TC', system-ui, sans-serif;
+}
+
+/* Each face is a glass-morph card matching `.glass-card` typography in
+ * index.html — semi-transparent dark background, hairline border in --line,
+ * subtle inner highlight on the top edge. */
+.trajectory-card-face {
+  background: var(--glass, rgba(20, 22, 26, 0.55));
+  border: 1px solid var(--line, rgba(243, 239, 232, 0.10));
+  border-radius: 14px;
+  padding: 20px 22px 18px;
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+          backdrop-filter: blur(14px) saturate(140%);
+  box-shadow:
+    0 24px 48px -24px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(243, 239, 232, 0.06);
+  /* transition / opacity / transform driven inline by TrajectoryCard.ts so
+   * the cross-fade timing stays in one place. */
+  transform-origin: 50% 50%;
+}
+
+.trajectory-card-year {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3, rgba(243, 239, 232, 0.38));
+  margin-bottom: 10px;
+}
+
+.trajectory-card-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink, #f3efe8);
+  line-height: 1.25;
+}
+
+.trajectory-card-org {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent, #FF6A00);
+  margin-bottom: 12px;
+}
+
+.trajectory-card-text {
+  margin: 0 0 14px;
+  color: var(--ink-2, rgba(243, 239, 232, 0.6));
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.trajectory-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Tags inside the card use the same .chip styling as the page-level chips
+ * (.chip is defined in index.html's inline <style>). The .tl-tags innerHTML we
+ * clone already contains <span class="chip">…</span> children, so they pick up
+ * the global .chip rules automatically. No extra rules needed unless we want
+ * a tighter card-specific size — which we don't, consistency is better. */

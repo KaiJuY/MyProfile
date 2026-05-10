@@ -26,10 +26,15 @@ const RING_SEGMENTS_TUBE = 64;
 const SPHERE_RADIUS = 0.05;
 const TICK_HEIGHT = 0.45;
 
-const COLOR_BASE = new THREE.Color(0x8a96a0); // cool engineering grey
-const COLOR_ACTIVE = new THREE.Color(0xeae3d4); // off-white, near --ink
-const COLOR_TICK = new THREE.Color(0x556068); // dimmer than ring
-const COLOR_GLOW = new THREE.Color(0xffd9b3); // warm pencil-line nudge
+// Wave 6: ring palette aligned with site tokens (`--ink`, `--accent`) so the
+// trajectory marker reads as part of the site's identity instead of an isolated
+// engineering grey. Inactive markers stay dim (off-white at 60% via opacity);
+// the active ring lights up to --accent (#FF6A00) for the "checkpoint reached"
+// signal.
+const COLOR_BASE = new THREE.Color(0x9aa1a8);  // dim ink — passive ring
+const COLOR_ACTIVE = new THREE.Color(0xff6a00); // var(--accent)
+const COLOR_TICK = new THREE.Color(0x556068);  // dimmer than ring
+const COLOR_GLOW = new THREE.Color(0xffb27a);  // warm halo lerp target
 
 export interface MarkerInit {
   position: THREE.Vector3;

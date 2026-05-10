@@ -14,6 +14,7 @@ import {
 import { Marker } from './Marker';
 import { GridFloor } from './GridFloor';
 import { HUD } from './HUD';
+import { TrajectoryCard } from './TrajectoryCard';
 
 /**
  * TrajectoryScene — camera flies along a 3D path through the career section.
@@ -72,6 +73,8 @@ export class TrajectoryScene implements SceneModule {
   private markers: Marker[] = [];
   private grid!: GridFloor;
   private hud!: HUD;
+  private card!: TrajectoryCard;
+  private langObserver?: MutationObserver;
 
   // Mounted state — we add/remove from the THREE.Scene based on visibility
   // so other sections aren't paying the draw-call cost.
@@ -106,6 +109,38 @@ export class TrajectoryScene implements SceneModule {
 
   init(scene: THREE.Scene): void {
     this.scene = scene;
+
+    // Wave 6: skip the entire trajectory build on mobile. The original
+    // `.timeline` HTML stays untouched and forms the experience there.
+    if (isMobile) {
+      // Stub: build path so milestone metadata still exists for any external
+      // consumer, but DON'T spawn marker meshes / HUD / card. The update()
+      // loop bails out early on isMobile so none of these are read.
+      this.path = buildPath();
+      this.group = new THREE.Group();
+      this.cameraPos.copy(this.camera.position);
+      this.lookAtTarget.copy(DEFAULT_CAMERA_LOOKAT);
+      // Construct a dummy disabled card (so dispose / refresh no-op).
+      this.card = new TrajectoryCard({
+        milestones: this.path.milestones,
+        timelineItems: [],
+        camera: this.camera,
+        enabled: false,
+        reducedMotion: getUserPrefs().reducedMotion,
+      });
+      // Construct a no-mount grid so this.grid exists for dispose; it's never
+      // added to the scene on mobile.
+      this.grid = new GridFloor();
+      // HUD: don't render on mobile — typography was authored for desktop.
+      // Provide a stub object that no-ops update/dispose.
+      this.hud = new HUD(this.path.milestones);
+      // Hide HUD root immediately by setting display:none through the only
+      // path we have — calling update with sectionProgress=0 fades opacity to
+      // 0 and after a couple frames sets display:none. Belt-and-suspenders:
+      // also do it explicitly.
+      this.hud.update(0, 0, 0);
+      return;
+    }
 
     // Build path + supporting visuals.
     this.path = buildPath();
@@ -142,15 +177,47 @@ export class TrajectoryScene implements SceneModule {
     this.timelineItems = nodes.slice().reverse();
     this.itemOpacity = this.timelineItems.map(() => 0);
 
-    // Initialize HTML items to invisible. We never re-show them via display
-    // because the section's height comes from the document layout — they
-    // need to occupy space whether or not they're visually faded in.
-    for (const el of this.timelineItems) {
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(18px)';
-      el.style.transition = 'none'; // we drive via JS each frame
-      el.style.willChange = 'opacity, transform';
+    // Wave 6: ONLY take over the .tl-item rendering on desktop. On mobile the
+    // floating card is disabled (no projection math, no canvas-overlay card)
+    // and the user should see the original scrolling `.timeline` HTML exactly
+    // as the inline CSS authored it — no per-frame opacity writes from us.
+    //
+    // Desktop with WebGL: the `.timeline` block is hidden via CSS
+    // (`.webgl-ready section#career .timeline { display: none }` in
+    // src/style.css). TrajectoryCard reads year / title / org / paragraph /
+    // tags out of the (now-hidden) `.tl-item` nodes — i18n flips work because
+    // applyLang() still mutates them.
+    if (!isMobile) {
+      for (const el of this.timelineItems) {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(18px)';
+        el.style.transition = 'none'; // we drive via JS each frame
+        el.style.willChange = 'opacity, transform';
+      }
     }
+
+    // Floating per-milestone card (desktop-only). Reads content from the
+    // `.tl-item` nodes above so we never duplicate copy and i18n flips
+    // automatically through the existing `applyLang()`.
+    //
+    // Language sync: index.html's `applyLang()` mutates `[data-i18n]` element
+    // innerHTML AND sets `<html data-lang="en|zh">`. We can't modify the inline
+    // script to dispatch a custom event (CLAUDE.md hard rule), so we observe
+    // the `data-lang` attribute on <html> and re-snapshot on change.
+    this.card = new TrajectoryCard({
+      milestones: this.path.milestones,
+      timelineItems: this.timelineItems,
+      camera: this.camera,
+      enabled: !isMobile,
+      reducedMotion: getUserPrefs().reducedMotion,
+    });
+    this.langObserver = new MutationObserver(() => this.card?.refreshContents());
+    this.langObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-lang'],
+    });
+    // Refresh once on the next tick so any late i18n application lands.
+    setTimeout(() => this.card?.refreshContents(), 0);
 
     // Initialize smoothed camera state to the current camera state — avoids a
     // frame-1 jump if the user starts mid-page.
@@ -174,6 +241,25 @@ export class TrajectoryScene implements SceneModule {
   update(dt: number): void {
     this.frame++;
     const sp = this.scrollManager.sectionProgress(SECTION_ID);
+
+    // Mobile: skip the entire trajectory takeover. The original `.timeline`
+    // HTML is the experience; no camera move, no marker mount, no card. Snap
+    // the camera back to default if we somehow wandered.
+    if (isMobile) {
+      this.unmount();
+      if (!this.cameraSettled) {
+        this.cameraPos.copy(DEFAULT_CAMERA_POSITION);
+        this.lookAtTarget.copy(DEFAULT_CAMERA_LOOKAT);
+        this.camera.position.copy(this.cameraPos);
+        this.camera.lookAt(this.lookAtTarget);
+        this.camera.updateMatrixWorld();
+        this.cameraSettled = true;
+      }
+      // HUD off-screen on mobile (it was authored for desktop typography).
+      if (this.frame % 8 === 0) this.hud.update(0, 0, 0);
+      return;
+    }
+
     const inSection = sp > 0.001 && sp < 0.999;
 
     // Perf gate: when we're far from the section AND the camera+HUD have
@@ -213,13 +299,16 @@ export class TrajectoryScene implements SceneModule {
       // user is on Hero / Pursuits / Work / Toolkit / Contact).
       this.unmount();
 
-      // Fade out all HTML items.
-      for (let i = 0; i < this.timelineItems.length; i++) {
-        this.itemOpacity[i] = damp(this.itemOpacity[i], 0, 4, dt);
-        const el = this.timelineItems[i];
-        const o = this.itemOpacity[i];
-        el.style.opacity = `${o}`;
-        el.style.transform = `translateY(${(1 - o) * 18}px)`;
+      // Fade out all HTML items (desktop only — mobile keeps the original
+      // .timeline HTML untouched per Wave 6 mobile fallback).
+      if (!isMobile) {
+        for (let i = 0; i < this.timelineItems.length; i++) {
+          this.itemOpacity[i] = damp(this.itemOpacity[i], 0, 4, dt);
+          const el = this.timelineItems[i];
+          const o = this.itemOpacity[i];
+          el.style.opacity = `${o}`;
+          el.style.transform = `translateY(${(1 - o) * 18}px)`;
+        }
       }
 
       // HUD updated to reflect "outside section" — opacity drives off
@@ -227,6 +316,8 @@ export class TrajectoryScene implements SceneModule {
       // textContent + a width %; nothing visual at month resolution moves
       // faster than 15Hz needs).
       if (this.frame % 4 === 0) this.hud.update(0, sp, 0);
+      // Card hides itself when sectionProgress is outside its band.
+      this.card.update(-1, sp);
       return;
     }
 
@@ -237,17 +328,22 @@ export class TrajectoryScene implements SceneModule {
 
     // Compute the target path point and look-ahead point.
     //
-    // Entry transition: when sp ∈ [0, ENTRY_BAND_END), tween the camera from
-    // its current position toward path-start over those frames. We do this
-    // implicitly via the damper — the target IS the path point, but the
-    // current is still near (0,0,5), so it eases in.
+    // Wave 6: pathT is now remapped from a *band* of sectionProgress, not the
+    // raw 0..1 sweep. Reason: with `.timeline` hidden the section is taller
+    // (set in src/style.css to min-height: 220vh) but the user only enters
+    // sectionProgress ≈ 0.31 once the section's bottom hits the viewport
+    // bottom. We want pathT=0 (NYCU) to sit near the FIRST visible-in-viewport
+    // moment, and pathT=1 (past SunSun) near the LAST. So map [0.40, 0.95] →
+    // [0, 1]. Below 0.40 the camera idles at NYCU; above 0.95 it pins past
+    // SunSun for the exit fly-past.
     //
-    // Exit transition: when sp > EXIT_BAND_START, the path-t saturates at 1
-    // (final marker reached) and we let the camera continue PAST by reading
-    // the trailing 5th control point's neighbourhood through the same curve
-    // (it extrapolates because t=1 is the end). We use lookAhead-only beyond
-    // the final marker — fly past then fade the HUD out.
-    const pathT = saturate(sp);
+    // Entry transition: implicit in the damper — current camera is near (0,0,5)
+    // when section starts; target is path-start; damper eases.
+    // Exit transition: after sp > 0.95 the pathT clamps at 1, camera reads
+    // the trailing 5th control point neighbourhood (curve extrapolates).
+    const SP_START = 0.40;
+    const SP_END = 0.95;
+    const pathT = saturate((sp - SP_START) / (SP_END - SP_START));
 
     this.path.curve.getPoint(pathT, this.tmpPos);
     // Look slightly ahead. We use a small forward step in t-space; clamp to
@@ -301,23 +397,27 @@ export class TrajectoryScene implements SceneModule {
 
     // Update HTML .tl-item fades from path t. centerT[i] = i / (N-1) →
     // 0.0, 0.333, 0.667, 1.0 for N=4. opacity = 1 - |t - centerT| / window.
-    const window_ = 0.18; // soft reveal window
-    for (let i = 0; i < this.timelineItems.length; i++) {
-      const m: Milestone = this.path.milestones[i];
-      const dist = Math.abs(pathT - m.t);
-      const target = saturate(1 - dist / window_);
-      // Reduced motion: snap to target (no damp), and don't translate.
-      if (reducedMotion) {
-        this.itemOpacity[i] = target;
-        const el = this.timelineItems[i];
-        el.style.opacity = `${target}`;
-        el.style.transform = 'translateY(0)';
-      } else {
-        this.itemOpacity[i] = damp(this.itemOpacity[i], target, 8, dt);
-        const o = this.itemOpacity[i];
-        const el = this.timelineItems[i];
-        el.style.opacity = `${o}`;
-        el.style.transform = `translateY(${(1 - o) * 18}px)`;
+    // Desktop only — on mobile the original `.timeline` is left alone
+    // (no WebGL takeover).
+    if (!isMobile) {
+      const window_ = 0.18; // soft reveal window
+      for (let i = 0; i < this.timelineItems.length; i++) {
+        const m: Milestone = this.path.milestones[i];
+        const dist = Math.abs(pathT - m.t);
+        const target = saturate(1 - dist / window_);
+        // Reduced motion: snap to target (no damp), and don't translate.
+        if (reducedMotion) {
+          this.itemOpacity[i] = target;
+          const el = this.timelineItems[i];
+          el.style.opacity = `${target}`;
+          el.style.transform = 'translateY(0)';
+        } else {
+          this.itemOpacity[i] = damp(this.itemOpacity[i], target, 8, dt);
+          const o = this.itemOpacity[i];
+          const el = this.timelineItems[i];
+          el.style.opacity = `${o}`;
+          el.style.transform = `translateY(${(1 - o) * 18}px)`;
+        }
       }
     }
 
@@ -326,6 +426,12 @@ export class TrajectoryScene implements SceneModule {
     // values only change at month resolution; the bar width has a CSS
     // 80ms transition so 4-frame quantization is invisible.
     if (this.frame % 4 === 0) this.hud.update(pathT, sp, this.cameraPos.z);
+
+    // Drive the floating milestone card. It runs every frame because its
+    // pixel position needs to track the projected marker as the camera moves;
+    // skipping frames would feel laggy. Inner update is cheap (one project()
+    // + a transform string write).
+    this.card.update(activeIdx, sp);
   }
 
   dispose(scene: THREE.Scene): void {
@@ -334,6 +440,11 @@ export class TrajectoryScene implements SceneModule {
     this.markers.length = 0;
     if (this.grid) this.grid.dispose();
     if (this.hud) this.hud.dispose();
+    if (this.card) this.card.dispose();
+    if (this.langObserver) {
+      this.langObserver.disconnect();
+      this.langObserver = undefined;
+    }
     // Restore the camera to default — leaving the scene mid-trajectory would
     // strand the camera somewhere down the path, breaking other sections.
     this.camera.position.copy(DEFAULT_CAMERA_POSITION);
