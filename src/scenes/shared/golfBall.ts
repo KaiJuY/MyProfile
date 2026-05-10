@@ -327,50 +327,93 @@ export async function loadGolfBallGeometry(
   _ballGeomPromise = (async () => {
     const gltf = await loader.loadAsync(url);
 
-    // Walk the scene and collect every mesh's geometry. Some Sketchfab/Poly
-    // exports split the ball into hemispheres or material groups — merging is
-    // safest. If only one mesh exists, mergeGeometries is a no-op clone.
-    const geoms: THREE.BufferGeometry[] = [];
+    // Collect every mesh's geometry along with its world-space centroid so we
+    // can cluster spatially. Some artist exports include MANY balls scattered
+    // across the scene (LOD copies, material variants, "shop display" arrays);
+    // merging all of them produces a row of tiny balls after normalization.
+    interface MeshEntry {
+      geom: THREE.BufferGeometry;
+      vertCount: number;
+      cx: number;
+      cy: number;
+      cz: number;
+    }
+    const entries: MeshEntry[] = [];
     gltf.scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh && m.geometry) {
-        // Bake any per-mesh transform into the geometry so a merge preserves
-        // shape regardless of nested node TRS.
         const g = m.geometry.clone();
         m.updateWorldMatrix(true, false);
         g.applyMatrix4(m.matrixWorld);
-        geoms.push(g);
+        g.computeBoundingSphere();
+        const bs = g.boundingSphere!;
+        entries.push({
+          geom: g,
+          vertCount: g.attributes.position?.count ?? 0,
+          cx: bs.center.x,
+          cy: bs.center.y,
+          cz: bs.center.z,
+        });
       }
     });
 
-    if (geoms.length === 0) {
+    if (entries.length === 0) {
       throw new Error('golfBall: no mesh found in GLB');
     }
 
-    // Merge if multiple. We strip non-position/normal/uv attributes first to
-    // sidestep mismatched-attribute crashes from mergeGeometries when the
-    // GLB has color/skinIndex/etc on only some sub-meshes.
+    // Spatial clustering: group meshes whose centroids are within 0.5× the
+    // primary mesh's bounding-sphere radius (i.e., parts of the SAME ball
+    // share a centroid; separate balls are far apart). Pick the cluster with
+    // the most total vertices — that's "the ball the artist intended as the
+    // main subject", or the highest-detail LOD.
+    const primary = entries.reduce((a, b) => (a.vertCount > b.vertCount ? a : b));
+    const primaryR = (primary.geom.boundingSphere?.radius ?? 1) * 0.5;
+    interface Cluster {
+      meshes: MeshEntry[];
+      totalVerts: number;
+      cx: number;
+      cy: number;
+      cz: number;
+    }
+    const clusters: Cluster[] = [];
+    for (const e of entries) {
+      const found = clusters.find(
+        (c) => Math.hypot(c.cx - e.cx, c.cy - e.cy, c.cz - e.cz) < primaryR
+      );
+      if (found) {
+        found.meshes.push(e);
+        found.totalVerts += e.vertCount;
+      } else {
+        clusters.push({
+          meshes: [e],
+          totalVerts: e.vertCount,
+          cx: e.cx,
+          cy: e.cy,
+          cz: e.cz,
+        });
+      }
+    }
+    const winner = clusters.reduce((a, b) => (a.totalVerts > b.totalVerts ? a : b));
+
+    // Merge if multiple meshes inside the winning cluster. Strip non-essential
+    // attributes first so mergeGeometries doesn't choke on mismatched layouts.
     let geom: THREE.BufferGeometry;
-    if (geoms.length === 1) {
-      geom = geoms[0];
+    if (winner.meshes.length === 1) {
+      geom = winner.meshes[0].geom;
     } else {
       const allowedAttrs = ['position', 'normal', 'uv'];
-      for (const g of geoms) {
+      const winnerGeoms = winner.meshes.map((m) => m.geom);
+      for (const g of winnerGeoms) {
         for (const name of Object.keys(g.attributes)) {
           if (!allowedAttrs.includes(name)) g.deleteAttribute(name);
         }
       }
-      const merged = mergeGeometries(geoms, false);
+      const merged = mergeGeometries(winnerGeoms, false);
       if (!merged) {
-        // Fall back to the largest mesh by vertex count if merge fails (mixed
-        // index/non-index, etc.).
-        let largest = geoms[0];
-        for (const g of geoms) {
-          if ((g.attributes.position?.count ?? 0) > (largest.attributes.position?.count ?? 0)) {
-            largest = g;
-          }
-        }
-        geom = largest;
+        const largest = winner.meshes.reduce((a, b) =>
+          a.vertCount > b.vertCount ? a : b
+        );
+        geom = largest.geom;
       } else {
         geom = merged;
       }

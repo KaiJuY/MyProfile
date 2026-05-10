@@ -257,7 +257,10 @@ export class HeroScene implements SceneModule {
     const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
       rimStrength: 0.35,                       // subtle, matches "monochrome restraint"
       rimColor: new THREE.Color(0x9ec3d6),     // cool-blue rim, very faint
-      dimpleStrength: 0.55,                    // unused on GLB path (kept for parity)
+      // The new GLB has real dimple geometry (~1.3M tris). Drop the procedural
+      // normal-map perturbation so the matcap pattern follows the actual mesh
+      // normals, not a flat-sphere illusion.
+      useDimpleMap: false,
     });
     this.ballMesh = built.mesh;
     this.ballMaterial = built.material;
@@ -343,7 +346,15 @@ export class HeroScene implements SceneModule {
     // scrolls past the first ~15% of total page progress, the hero region is
     // off-screen and we can stop ticking entirely. We use the cheaper global
     // scrollProgress (no rect read) instead of sectionProgress('hero').
-    if (this.scrollManager.scrollProgress > 0.15) return;
+    // Also HIDE the ball mesh — with a high-poly GLB (~850k tris) leaving it
+    // visible costs 4-6× the GPU even when the section is scrolled away.
+    if (this.scrollManager.scrollProgress > 0.15) {
+      if (this.ballMesh) this.ballMesh.visible = false;
+      if (this.maskMesh) this.maskMesh.visible = false;
+      return;
+    }
+    if (this.ballMesh) this.ballMesh.visible = true;
+    if (this.maskMesh) this.maskMesh.visible = true;
 
     this.frame++;
 

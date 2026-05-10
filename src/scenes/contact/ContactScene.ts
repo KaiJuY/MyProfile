@@ -178,7 +178,9 @@ export class ContactScene implements SceneModule {
     const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
       rimStrength: 0.35,
       rimColor: new THREE.Color(0x9ec3d6),
-      dimpleStrength: 0.55,
+      // GLB has real dimple geometry — let the actual mesh normals drive the
+      // matcap highlight pattern instead of the procedural normal map.
+      useDimpleMap: false,
       opacity: 1.0,
       transparent: true, // we fade the ball after drop
     });
