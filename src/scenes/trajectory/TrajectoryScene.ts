@@ -260,7 +260,14 @@ export class TrajectoryScene implements SceneModule {
       return;
     }
 
-    const inSection = sp > 0.001 && sp < 0.999;
+    // Treat the trajectory section as "out" the moment the user enters
+    // #contact, even if `sp` is still inside (0.001, 0.999). Otherwise the
+    // floating card lingers over the contact links because the career section
+    // is tall (220vh) and its sectionProgress only crosses 0.97 well after
+    // contact has scrolled into view.
+    const contactSp = this.scrollManager.sectionProgress('contact');
+    const contactActive = contactSp > 0.0001;
+    const inSection = !contactActive && sp > 0.001 && sp < 0.999;
 
     // Perf gate: when we're far from the section AND the camera+HUD have
     // already settled to default, skip the entire update body. This avoids
@@ -315,9 +322,17 @@ export class TrajectoryScene implements SceneModule {
       // sectionProgress so it'll be 0 here. Throttle (only updates DOM
       // textContent + a width %; nothing visual at month resolution moves
       // faster than 15Hz needs).
-      if (this.frame % 4 === 0) this.hud.update(0, sp, 0);
+      //
+      // When `contactActive` is true the user has scrolled into #contact but
+      // career.sectionProgress is still inside the HUD/card visibility band
+      // (career section is taller than the viewport, so sp only hits the
+      // outer fade-out beyond 0.97). Pass a synthetic sp that's outside
+      // both bands so the HUD + card fade fully — otherwise they'd linger
+      // on top of the contact links.
+      const fadeOutSp = contactActive ? 1.0 : sp;
+      if (this.frame % 4 === 0) this.hud.update(0, fadeOutSp, 0);
       // Card hides itself when sectionProgress is outside its band.
-      this.card.update(-1, sp);
+      this.card.update(-1, fadeOutSp);
       return;
     }
 

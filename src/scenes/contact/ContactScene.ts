@@ -5,7 +5,6 @@ import { gsap } from 'gsap';
 import type { SceneModule } from '../SceneManager';
 import type { ScrollManager } from '@core/ScrollManager';
 import type { PhysicsWorld } from '@physics/PhysicsWorld';
-import { damp } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
 
 import { buildGolfBallMeshFromGLB } from '../shared/golfBall';
@@ -13,32 +12,35 @@ import { Hole } from './Hole';
 import { GreenSurface } from './GreenSurface';
 
 /**
- * ContactScene — finale animation. A golf ball drops into the cup; the contact
- * info + footer fade in once the ball is gone.
+ * ContactScene — ambient finale. A golf ball drops into a cup positioned in
+ * the bottom-right of the viewport, so the contact headline + links + footer
+ * remain fully visible the entire time.
  *
- * Design (per playbook 07 §3 + footer notes):
- *   - Hybrid physics + GSAP. First ~1.5s use Rapier (real rolling), then
- *     ~0.7s use GSAP scripted (so the ball can't get stuck on the rim).
- *   - Ball arrives from upper-side (positive x, positive y) with directional
- *     motion — feels deliberate, not "dropped from camera".
- *   - On mobile, skip the roll and Rapier physics entirely: kinematic Y tween
- *     from above-hole straight into the cup.
+ * Design (post-feedback rework):
+ *   - Contact info (headline / email / phone / github / footer) is visible at
+ *     normal CSS opacity at all times. The ball-drop animation is a corner
+ *     flourish, NOT a content gate.
+ *   - Hole + green + ball anchored to a screen-relative spot in the lower
+ *     right (driven by camera aspect at init / resize). On mobile, the spot
+ *     scales inward to stay on-screen.
+ *   - Hybrid physics + GSAP on desktop: first phases use Rapier (real
+ *     rolling), final phases use GSAP scripted so the ball can't snag on the
+ *     rim. Mobile uses a simple kinematic tween into the cup.
  *
- * Camera coordination with TrajectoryScene (CRITICAL):
+ * Camera coordination with TrajectoryScene:
  *   TrajectoryScene damps the camera back to (0,0,5) lookAt origin when the
- *   user leaves #career. By the time #contact is in view (sectionProgress > 0)
- *   that handoff is already done. ContactScene then tilts the camera DOWN by
- *   ~10° to give a "putting view" angle for the drop animation. We damp the
- *   tilt with sectionProgress so the user gets a smooth pitch transition as
- *   they scroll into Contact, and back up if they scroll away.
+ *   user leaves #career. ContactScene NO LONGER tilts the camera down — the
+ *   hole is placed in the bottom-right of the natural view so a tilt would
+ *   make it look misaligned. We do still apply a tiny camera shake on the
+ *   drop "thunk".
  *
- * Stencil: NONE — full-viewport finale.
+ * Stencil: NONE.
  *
- * Pointer-events: this scene adds NO DOM that intercepts clicks. It only
- *   - reads contact/footer DOM nodes to set initial opacity:0
- *   - tweens those nodes' opacity/transform via GSAP
- *   - injects a single <style> tag with the LIVE-pulse keyframe
- *   No pointer-events:auto introduced; mailto/tel/github stay clickable.
+ * Pointer-events: no DOM mutation other than (a) injecting a <style> tag for
+ *   the LIVE pulse keyframe and (b) wrapping the literal word "LIVE" inside
+ *   `.footnote span` so the keyframe has a target. No opacity overrides on
+ *   the contact / footer DOM — links stay clickable from the moment the
+ *   section enters the viewport.
  */
 
 const SECTION_ID = 'contact';
@@ -57,37 +59,52 @@ const PHASE_DROP_END = 1.0;    // 1.8..2.2s
 const TRIGGER_SP = 0.05;
 const RESET_SP = 0.001; // user has scrolled essentially out of the section
 
-// Camera tilt (radians). 10° down at full sectionProgress.
-const CAMERA_PITCH_MAX = -(10 * Math.PI) / 180;
-const CAMERA_PITCH_LAMBDA = 4;
+// Camera shake (post-drop "thunk"). Pitch override is gone — the hole sits in
+// the bottom-right of the natural camera view so we don't need a putting-view
+// tilt.
 const DEFAULT_CAMERA_POS = new THREE.Vector3(0, 0, 5);
+const CAMERA_DEFAULT_LOOKAT = new THREE.Vector3(0, 0, 0);
 
-// World coords (matches Hole defaults).
-const HOLE_CENTER = new THREE.Vector3(0, -2, 0);
+// Anchor target — fraction of half-width / half-height from screen center.
+// Positive x = right, negative y = below center. The actual world coord is
+// recomputed from camera aspect at init() / resize() so the hole stays in the
+// bottom-right corner regardless of viewport.
+const ANCHOR_X_FRACTION = 0.55;   // 55% of half-width to the right
+const ANCHOR_Y_FRACTION = -0.62;  // 62% of half-height below center
 
 // Ball geometry
-const BALL_RADIUS = 0.18; // visually smaller than the rim (rim radius 0.55)
+const BALL_RADIUS = 0.16;
 
-// Drop entry point (above-and-to-side).
-const BALL_START = new THREE.Vector3(2.0, 2.4, 0.6);
-// Where the ball lands on the green BEFORE rolling.
-const BALL_LAND = new THREE.Vector3(0.9, -2 + BALL_RADIUS, 0.4);
-// Where the ball is when it teeters on the rim.
-const BALL_TEETER = new THREE.Vector3(0.45, -2 + BALL_RADIUS, 0.0);
-// Resting depth in cup (we fade at the same time so this just needs to be below).
-const BALL_DROP_DEPTH = -2.7;
+// Hole geometry (smaller — corner flourish, not a stage)
+const HOLE_RIM_RADIUS = 0.36;
+const HOLE_TUBE_RADIUS = 0.018;
+
+// Green-plane footprint (anchored at the hole). Made small enough to read as a
+// vignette around the cup rather than a full backdrop.
+const GREEN_WIDTH = 2.6;
+const GREEN_DEPTH = 1.8;
+
+// Ball trajectory expressed as offsets from the hole anchor — recomputed at
+// init/resize together with HOLE_CENTER. Defaults are placeholder; the real
+// values are set inside `recomputeAnchor()`.
+const HOLE_CENTER = new THREE.Vector3(1.85, -1.35, 0);
+const BALL_START = new THREE.Vector3(0, 0, 0);
+const BALL_LAND = new THREE.Vector3(0, 0, 0);
+const BALL_TEETER = new THREE.Vector3(0, 0, 0);
+let BALL_DROP_DEPTH = -2.0;
+
+// Offset shape (relative to HOLE_CENTER). Same trajectory shape as before but
+// scaled smaller to match the new corner footprint.
+const BALL_START_OFFSET = new THREE.Vector3(0.85, 1.85, 0.45);
+const BALL_LAND_OFFSET = new THREE.Vector3(0.45, 0, 0.30);   // .y is HOLE_CENTER.y + BALL_RADIUS, set later
+const BALL_TEETER_OFFSET = new THREE.Vector3(0.18, 0, 0.0);  // .y is HOLE_CENTER.y + BALL_RADIUS, set later
+const BALL_DROP_DEPTH_OFFSET = -0.7;                         // BALL_DROP_DEPTH = HOLE_CENTER.y + this
 
 const isMobile =
   typeof window !== 'undefined' &&
   (window.innerWidth < 768 ||
     (typeof window.matchMedia === 'function' &&
       window.matchMedia('(pointer: coarse)').matches));
-
-interface FadeTarget {
-  el: HTMLElement;
-  /** index in stagger order (0 = first to appear). */
-  order: number;
-}
 
 export class ContactScene implements SceneModule {
   readonly name = 'contact';
@@ -124,11 +141,15 @@ export class ContactScene implements SceneModule {
   private shakeT = 0;                // counts down 0..0.4s
   private shakeAmount = 0;
 
-  // Smoothed camera pitch
-  private currentPitch = 0;
+  // Cached camera aspect for anchor recompute trigger.
+  private cachedAspect = 0;
 
-  // DOM fade targets (contact + footer)
-  private fadeTargets: FadeTarget[] = [];
+  // Hole's "as-constructed" position (used to compute resize delta).
+  private holeInitX = 0;
+  private holeInitY = 0;
+  private holeInitZ = 0;
+
+  // DOM/style targets we own.
   private styleTag: HTMLStyleElement | null = null;
   private liveObserver: MutationObserver | null = null;
 
@@ -145,22 +166,34 @@ export class ContactScene implements SceneModule {
   async init(scene: THREE.Scene): Promise<void> {
     this.scene = scene;
 
+    // Compute the world-anchor (HOLE_CENTER) from the camera aspect — we want
+    // the hole to land in the bottom-right of the natural view. This also
+    // populates BALL_START / BALL_LAND / BALL_TEETER / BALL_DROP_DEPTH.
+    this.recomputeAnchor();
+
     // ------- Visuals (3D) -------
     this.group = new THREE.Group();
     this.green = new GreenSurface({
       y: HOLE_CENTER.y,
-      width: 9,
-      depth: 7,
+      width: GREEN_WIDTH,
+      depth: GREEN_DEPTH,
     });
+    // GreenSurface only sets y on its mesh; translate x/z manually so the
+    // plane sits under the hole.
+    this.green.mesh.position.x = HOLE_CENTER.x;
+    this.green.mesh.position.z = HOLE_CENTER.z;
     this.group.add(this.green.mesh);
 
     this.hole = new Hole({
       centerX: HOLE_CENTER.x,
       centerZ: HOLE_CENTER.z,
       surfaceY: HOLE_CENTER.y,
-      rimRadius: 0.55,
-      tubeRadius: 0.025,
+      rimRadius: HOLE_RIM_RADIUS,
+      tubeRadius: HOLE_TUBE_RADIUS,
     });
+    this.holeInitX = HOLE_CENTER.x;
+    this.holeInitY = HOLE_CENTER.y;
+    this.holeInitZ = HOLE_CENTER.z;
     this.group.add(this.hole.group);
 
     // Ball — REUSE Hero's shader + the shared GLB geometry. Smaller visual
@@ -207,7 +240,7 @@ export class ContactScene implements SceneModule {
       this.greenBody = this.physics.addRigidBody(greenDesc);
       // Cuboid half-extents — wider than the visible green so the ball can't
       // accidentally roll off the edge mid-animation.
-      const greenColDesc = RAPIER.ColliderDesc.cuboid(6, 0.05, 4)
+      const greenColDesc = RAPIER.ColliderDesc.cuboid(GREEN_WIDTH * 0.7, 0.05, GREEN_DEPTH * 0.7)
         .setRestitution(0.25)
         .setFriction(0.55);
       this.greenCollider = this.physics.addCollider(greenColDesc, this.greenBody);
@@ -231,56 +264,67 @@ export class ContactScene implements SceneModule {
       this.bodyMode = 'kinematic';
     }
 
-    // ------- DOM fade targets -------
-    this.collectFadeTargets();
+    // ------- DOM augmentation (LIVE pulse only — NO opacity gating) -------
+    this.setupLivePulse();
     this.injectStyles();
 
     // Don't mount yet — only mount when entering the section to save draw calls
     // for users who never reach the contact section.
-
-    // Initialize smoothed pitch from current camera quaternion. We can't read
-    // a clean pitch off a quaternion robustly mid-flight (TrajectoryScene may
-    // be writing to it on prior frames), so just start at 0 — the damper will
-    // converge by frame ~30 anyway.
-    this.currentPitch = 0;
   }
 
-  /** Register fade-in DOM targets and pre-set them invisible. */
-  private collectFadeTargets(): void {
-    const targets: FadeTarget[] = [];
+  /**
+   * Recompute the hole / ball anchor positions based on current camera aspect.
+   * Result: HOLE_CENTER lands at (ANCHOR_X_FRACTION * halfW, ANCHOR_Y_FRACTION
+   * * halfH, 0). Trajectory offsets are scaled with HOLE_CENTER so the visual
+   * proportions stay consistent at any aspect.
+   */
+  private recomputeAnchor(): void {
+    const fovRad = (this.camera.fov * Math.PI) / 180;
+    // Visible bounds at z=0 from camera at (0,0,5).
+    const halfH = Math.tan(fovRad / 2) * 5;
+    const halfW = halfH * this.camera.aspect;
 
-    // Inner left column (h2 + p)
-    const left = document.querySelector<HTMLElement>('#contact .contact > div:not(.contact-side)');
-    if (left) targets.push({ el: left, order: 0 });
+    // Clamp the X fraction so very narrow viewports don't shove the hole
+    // entirely off-screen on one side. We want at least ~halfW * 0.4 of room
+    // to the right of the hole for the green plane.
+    const minRightRoom = Math.min(halfW, GREEN_WIDTH * 0.55);
+    const maxX = Math.max(halfW * 0.0, halfW - minRightRoom);
+    HOLE_CENTER.x = Math.min(halfW * ANCHOR_X_FRACTION, maxX);
+    HOLE_CENTER.y = halfH * ANCHOR_Y_FRACTION;
+    HOLE_CENTER.z = 0;
 
-    // Right column links — stagger 1, 2, 3
-    const links = document.querySelectorAll<HTMLAnchorElement>('#contact .contact-side a');
-    links.forEach((a, i) => {
-      // CRITICAL: no pointer-events:none. Just opacity + transform.
-      targets.push({ el: a, order: 1 + i });
-    });
+    // Apply offsets relative to HOLE_CENTER.
+    BALL_START.set(
+      HOLE_CENTER.x + BALL_START_OFFSET.x,
+      HOLE_CENTER.y + BALL_START_OFFSET.y,
+      HOLE_CENTER.z + BALL_START_OFFSET.z
+    );
+    BALL_LAND.set(
+      HOLE_CENTER.x + BALL_LAND_OFFSET.x,
+      HOLE_CENTER.y + BALL_RADIUS,
+      HOLE_CENTER.z + BALL_LAND_OFFSET.z
+    );
+    BALL_TEETER.set(
+      HOLE_CENTER.x + BALL_TEETER_OFFSET.x,
+      HOLE_CENTER.y + BALL_RADIUS,
+      HOLE_CENTER.z + BALL_TEETER_OFFSET.z
+    );
+    BALL_DROP_DEPTH = HOLE_CENTER.y + BALL_DROP_DEPTH_OFFSET;
 
-    // Footer spans
-    const footerSpans = document.querySelectorAll<HTMLElement>('.footnote span');
-    footerSpans.forEach((s, i) => {
-      targets.push({ el: s, order: 4 + i });
-    });
+    this.cachedAspect = this.camera.aspect;
+  }
 
-    for (const t of targets) {
-      t.el.style.opacity = '0';
-      t.el.style.transform = 'translateY(20px)';
-      t.el.style.willChange = 'opacity, transform';
-      // No pointer-events change — keep links clickable as soon as opacity fades in.
-    }
-
-    this.fadeTargets = targets;
-
+  /**
+   * Wire the ambient "LIVE" pulse in the footer. No opacity manipulation —
+   * the contact info / footer render at their normal CSS opacity.
+   */
+  private setupLivePulse(): void {
     // Mark the LIVE word inside the right footer span.
     // Existing markup is "VER 9.4.0 · TRACKED · LIVE" (single text node).
     // We wrap "LIVE" in its own span so we can attach a CSS animation.
     this.wrapLiveWord();
 
-    // Step 08: lang-toggle robustness. The site's `applyLang(lang)` does
+    // Lang-toggle robustness. The site's `applyLang(lang)` does
     // `el.innerHTML = I18N[lang][key]` on `[data-i18n]` nodes — that blows
     // away our LIVE wrap. Watch for that mutation and re-wrap on the spot.
     const right = document.querySelector<HTMLElement>('.footnote span:nth-child(2)');
@@ -324,8 +368,6 @@ export class ContactScene implements SceneModule {
   display: inline-block;
   transform-origin: center;
   animation: contact-live-pulse 1.6s ease-in-out infinite;
-  /* Pulse only kicks in once the parent span is visible (handled by parent
-   * opacity 0 → 1 fade); this rule is harmless before then. */
 }
 `.trim();
     this.styleTag = document.createElement('style');
@@ -402,17 +444,14 @@ export class ContactScene implements SceneModule {
   }
 
   /**
-   * Reduced-motion: zero-duration timeline that just snaps fade targets to 1
-   * and triggers `onAnimationComplete`. No ball drop, no shake.
+   * Reduced-motion: zero-duration timeline that just triggers
+   * `onAnimationComplete`. No ball drop, no shake — and no DOM tweening
+   * (content was always visible).
    */
   private buildReducedMotionTimeline(): gsap.core.Timeline {
     const tl = gsap.timeline({
       onComplete: () => this.onAnimationComplete(),
     });
-    for (const t of this.fadeTargets) {
-      t.el.style.opacity = '1';
-      t.el.style.transform = 'translateY(0)';
-    }
     // Tiny duration so the onComplete fires next tick.
     tl.to({}, { duration: 0.01 });
     return tl;
@@ -424,8 +463,10 @@ export class ContactScene implements SceneModule {
       onComplete: () => this.onAnimationComplete(),
     });
 
-    // Place the ball directly above the hole.
-    this.ballMesh.position.set(HOLE_CENTER.x, 1.6, HOLE_CENTER.z);
+    // Place the ball directly above the hole at a height that stays inside
+    // the green-plane footprint (above the rim).
+    const ballAbove = HOLE_CENTER.y + 1.4;
+    this.ballMesh.position.set(HOLE_CENTER.x, ballAbove, HOLE_CENTER.z);
 
     // Drop straight down to cup mouth, then into the cup.
     tl.to(this.ballMesh.position, {
@@ -445,10 +486,7 @@ export class ContactScene implements SceneModule {
       ease: 'power2.out',
     }, `-=${total * 0.20}`);
 
-    // Footer fade-in begins after ball is gone.
-    this.scheduleFadeIn(tl, total * 0.85);
-
-    // No camera shake on mobile.
+    // No camera shake on mobile, no DOM fade — content was visible all along.
     return tl;
   }
 
@@ -607,28 +645,7 @@ export class ContactScene implements SceneModule {
       this.shakeAmount = 0.005; // radians
     }, phaseDropEnd);
 
-    // Footer fade-in begins right at phaseDropEnd.
-    this.scheduleFadeIn(tl, phaseDropEnd);
-
     return tl;
-  }
-
-  /** Stagger fade-in of contact + footer DOM. */
-  private scheduleFadeIn(tl: gsap.core.Timeline, startAt: number): void {
-    const STAGGER = 0.10;
-    for (const t of this.fadeTargets) {
-      tl.to(t.el, {
-        opacity: 1,
-        y: 0,
-        duration: 0.4,
-        ease: 'power2.out',
-        onUpdate: () => {
-          // gsap can't directly tween a transform string we set inline; use
-          // explicit style update.
-          t.el.style.transform = `translateY(${(1 - (gsap.getProperty(t.el, 'opacity') as number)) * 20}px)`;
-        },
-      }, startAt + t.order * STAGGER);
-    }
   }
 
   private onAnimationComplete(): void {
@@ -644,6 +661,42 @@ export class ContactScene implements SceneModule {
     }
   }
 
+  /**
+   * Sync visual + physics-body positions to the recomputed HOLE_CENTER. Called
+   * after `recomputeAnchor()` on aspect change. The Hole's internal meshes
+   * (rim torus, cup disc, shadow ring) bake their world positions at
+   * construction, so we move them together by translating their parent group.
+   */
+  private repositionAnchorMeshes(): void {
+    if (this.green) {
+      this.green.mesh.position.x = HOLE_CENTER.x;
+      this.green.mesh.position.y = HOLE_CENTER.y;
+      this.green.mesh.position.z = HOLE_CENTER.z;
+    }
+    if (this.hole) {
+      // Translate the hole-group by the delta from its baked construction
+      // position so it follows the new HOLE_CENTER.
+      this.hole.group.position.set(
+        HOLE_CENTER.x - this.holeInitX,
+        HOLE_CENTER.y - this.holeInitY,
+        HOLE_CENTER.z - this.holeInitZ
+      );
+    }
+    if (this.greenBody) {
+      this.greenBody.setTranslation(
+        { x: HOLE_CENTER.x, y: HOLE_CENTER.y - 0.05, z: HOLE_CENTER.z },
+        true
+      );
+    }
+    if (this.ballBody && !this.isPlaying) {
+      this.ballBody.setTranslation(
+        { x: BALL_START.x, y: BALL_START.y, z: BALL_START.z },
+        true
+      );
+      this.ballMesh.position.copy(BALL_START);
+    }
+  }
+
   /** Reset state so the next entry replays the animation. */
   private resetForReplay(): void {
     if (this.timeline) {
@@ -656,11 +709,8 @@ export class ContactScene implements SceneModule {
     this.ballMesh.visible = false;
     this.hole.setGlow(0);
 
-    // Reset DOM fades back to invisible so the replay re-staggers them.
-    for (const t of this.fadeTargets) {
-      t.el.style.opacity = '0';
-      t.el.style.transform = 'translateY(20px)';
-    }
+    // Contact info / footer remain at their normal CSS opacity — no DOM
+    // reset needed. The ball-drop on replay is purely an ambient flourish.
 
     // Reset ball physics.
     if (this.ballBody) {
@@ -682,7 +732,7 @@ export class ContactScene implements SceneModule {
     // far below the fold burned 5+% CPU per frame on this scene's "is the
     // animation done? should we mount?" book-keeping. We still let the
     // gsap timeline tick through if it's actively playing (rare).
-    if (!inSection && !this.isPlaying && !this.mounted && this.currentPitch === 0) {
+    if (!inSection && !this.isPlaying && !this.mounted && this.shakeT === 0) {
       return;
     }
 
@@ -698,56 +748,32 @@ export class ContactScene implements SceneModule {
       }
     }
 
-    // Camera coordination:
-    //   We want to add a downward pitch as the user enters Contact, BUT only if
-    //   TrajectoryScene isn't currently writing to the camera (it only does so
-    //   while inside #career). Practically, by the time sectionProgress(contact)
-    //   > 0, the user has scrolled past #career, so trajectory is in its
-    //   damp-back-to-default branch and writing (0,0,5)+lookAt(0,0,0) every
-    //   frame. We then OVERRIDE the camera AFTER trajectory by writing on the
-    //   NEXT frame.
-    //
-    //   Because SceneManager iterates registration order, ContactScene runs
-    //   AFTER TrajectoryScene in the same frame — so our writes are the last
-    //   word and they win.
-    if (inSection) {
-      const reducedMotion = getUserPrefs().reducedMotion;
-      const targetPitch = reducedMotion ? 0 : CAMERA_PITCH_MAX * Math.min(sp / 0.4, 1);
-      this.currentPitch = reducedMotion
-        ? 0
-        : damp(this.currentPitch, targetPitch, CAMERA_PITCH_LAMBDA, dt);
+    // Recompute the anchor if the camera aspect changed (resize). Cheap.
+    if (this.camera.aspect !== this.cachedAspect) {
+      this.recomputeAnchor();
+      this.repositionAnchorMeshes();
+    }
 
-      // Apply over the trajectory's reset write. We assume trajectory has just
-      // written (0,0,5)+lookAt(0,0,0). We re-aim at a point below origin to
-      // give the "putting view" pitch.
+    // Camera coordination:
+    //   The hole is now in the bottom-right corner of the natural camera view,
+    //   so NO pitch override. We do still apply a brief shake on ball-impact —
+    //   but only while the shake is decaying. That keeps us from fighting
+    //   TrajectoryScene's damp-to-default writes outside of the shake window.
+    //
+    //   SceneManager iterates registration order, so ContactScene runs after
+    //   TrajectoryScene in the same frame — our shake writes are the last word.
+    if (inSection && this.shakeT > 0) {
+      const phase = this.shakeT / 0.4;
+      const shakeYaw = (Math.random() - 0.5) * 2 * this.shakeAmount * phase;
+      const shakePitch = (Math.random() - 0.5) * 2 * this.shakeAmount * phase;
       this.camera.position.copy(DEFAULT_CAMERA_POS);
-      // Compute a lookAt that produces our desired pitch:
-      //   yaw=0, pitch=currentPitch (negative = look down)
-      //   forward = (0, sin(pitch), -cos(pitch))
-      const fx = 0;
-      const fy = Math.sin(this.currentPitch);
-      const fz = -Math.cos(this.currentPitch);
-      // Camera shake — small Y rotation jitter, dampened over shakeT.
-      let shakeYaw = 0;
-      let shakePitch = 0;
-      if (this.shakeT > 0) {
-        const phase = this.shakeT / 0.4; // 1 → 0 over 0.4s (we decrement below)
-        shakeYaw = (Math.random() - 0.5) * 2 * this.shakeAmount * phase;
-        shakePitch = (Math.random() - 0.5) * 2 * this.shakeAmount * phase;
-        this.shakeT = Math.max(0, this.shakeT - dt);
-      }
-      const lookAt = new THREE.Vector3(
-        DEFAULT_CAMERA_POS.x + fx + shakeYaw,
-        DEFAULT_CAMERA_POS.y + fy + shakePitch,
-        DEFAULT_CAMERA_POS.z + fz
+      this.camera.lookAt(
+        CAMERA_DEFAULT_LOOKAT.x + shakeYaw,
+        CAMERA_DEFAULT_LOOKAT.y + shakePitch,
+        CAMERA_DEFAULT_LOOKAT.z
       );
-      this.camera.lookAt(lookAt);
       this.camera.updateMatrixWorld();
-    } else {
-      // Damp pitch back to 0 — but DON'T touch camera unless we already had
-      // a non-zero pitch (otherwise we'd fight TrajectoryScene). Simple guard:
-      // only override if pitch is appreciably non-zero.
-      this.currentPitch = damp(this.currentPitch, 0, CAMERA_PITCH_LAMBDA, dt);
+      this.shakeT = Math.max(0, this.shakeT - dt);
     }
 
     // Trigger logic.
@@ -783,11 +809,13 @@ export class ContactScene implements SceneModule {
     }
     if (this.mounted) scene.remove(this.group);
 
-    // Restore DOM
-    for (const t of this.fadeTargets) {
-      t.el.style.opacity = '';
-      t.el.style.transform = '';
-      t.el.style.willChange = '';
+    // Unwrap the LIVE span so the footer reverts to a single text node.
+    const right = document.querySelector<HTMLElement>('.footnote span:nth-child(2)');
+    if (right) {
+      const liveSpan = right.querySelector('.contact-live');
+      if (liveSpan) {
+        right.textContent = right.textContent ?? '';
+      }
     }
 
     if (this.styleTag && this.styleTag.parentElement) {

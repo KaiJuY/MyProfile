@@ -120,8 +120,10 @@ export class GreenSurface {
           // remap to [-0.5, 0.5] then take length → 0 at center, ~0.71 at corner.
           vec2 c = vLocalUv - 0.5;
           float r = length(c);
-          // Soft fade: full alpha out to ~0.35, then ramp to 0 by ~0.55.
-          float alpha = smoothstep(0.55, 0.30, r);
+          // Aggressive vignette — only the immediate area around the cup is
+          // opaque, rest of the plane fades fast so contact text behind it
+          // remains readable. Solid out to ~0.18, ramps to 0 by ~0.42.
+          float alpha = smoothstep(0.42, 0.18, r) * 0.85;
           gl_FragColor = vec4(col, alpha * uOpacity);
         }
       `,
