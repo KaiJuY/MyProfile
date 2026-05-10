@@ -8,7 +8,7 @@ import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import { damp } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
 
-import { buildDimpleNormalMap, buildGolfBallMesh } from '../shared/golfBall';
+import { buildGolfBallMeshFromGLB } from '../shared/golfBall';
 import { Hole } from './Hole';
 import { GreenSurface } from './GreenSurface';
 
@@ -105,8 +105,6 @@ export class ContactScene implements SceneModule {
   private hole!: Hole;
   private ballMesh!: THREE.Mesh;
   private ballMaterial!: THREE.ShaderMaterial;
-  private ballGeometry!: THREE.SphereGeometry;
-  private dimpleTex?: THREE.CanvasTexture;
   private matcapTex?: THREE.Texture;
 
   // Physics handles (desktop only)
@@ -144,7 +142,7 @@ export class ContactScene implements SceneModule {
     this.physics = physics;
   }
 
-  init(scene: THREE.Scene): void {
+  async init(scene: THREE.Scene): Promise<void> {
     this.scene = scene;
 
     // ------- Visuals (3D) -------
@@ -165,9 +163,11 @@ export class ContactScene implements SceneModule {
     });
     this.group.add(this.hole.group);
 
-    // Ball — REUSE Hero's shader. Smaller radius for the contact scale; we
-    // need the ball to look like the same object but at a different distance.
-    this.dimpleTex = buildDimpleNormalMap(512, 250, 14, 0.55);
+    // Ball — REUSE Hero's shader + the shared GLB geometry. Smaller visual
+    // scale here (BALL_RADIUS=0.18) than the hero stage (0.5); since the
+    // shared geometry is normalized to bounding-sphere radius 0.5, we scale
+    // the mesh by BALL_RADIUS/0.5 to land at the contact-scene size while
+    // keeping the same dimpled silhouette.
     const loader = new THREE.TextureLoader();
     this.matcapTex = loader.load('/textures/matcap-pearl.png');
     this.matcapTex.colorSpace = THREE.SRGBColorSpace;
@@ -175,7 +175,7 @@ export class ContactScene implements SceneModule {
     this.matcapTex.magFilter = THREE.LinearFilter;
     this.matcapTex.generateMipmaps = true;
 
-    const built = buildGolfBallMesh(this.matcapTex, this.dimpleTex, BALL_RADIUS, 48, {
+    const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
       rimStrength: 0.35,
       rimColor: new THREE.Color(0x9ec3d6),
       dimpleStrength: 0.55,
@@ -184,7 +184,10 @@ export class ContactScene implements SceneModule {
     });
     this.ballMesh = built.mesh;
     this.ballMaterial = built.material;
-    this.ballGeometry = built.geometry;
+    // Scale the visual mesh to BALL_RADIUS while leaving the cached geometry
+    // at its normalized radius 0.5 (so HeroScene sees the same source).
+    const visualScale = BALL_RADIUS / 0.5;
+    this.ballMesh.scale.setScalar(visualScale);
     this.ballMesh.position.copy(BALL_START);
     this.ballMesh.visible = false; // hidden until first trigger
     this.group.add(this.ballMesh);
@@ -792,9 +795,10 @@ export class ContactScene implements SceneModule {
     // 3D cleanup
     this.green.dispose();
     this.hole.dispose();
-    this.ballGeometry.dispose();
+    // NOTE: ballMesh.geometry is the SHARED GLB cache (loadGolfBallGeometry).
+    // HeroScene also references it — do NOT dispose here. Full teardown is
+    // handled by `disposeSharedGolfBallAssets` at app dispose.
     this.ballMaterial.dispose();
-    if (this.dimpleTex) this.dimpleTex.dispose();
     if (this.matcapTex) this.matcapTex.dispose();
 
     // Physics cleanup. Rapier wrapper owns the world; we don't need to

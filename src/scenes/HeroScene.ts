@@ -6,7 +6,7 @@ import type { PhysicsWorld } from '@physics/PhysicsWorld';
 import type { ScrollManager } from '@core/ScrollManager';
 import { damp, lerp, clamp } from '@utils/lerp';
 import { getUserPrefs } from '@core/UserPrefs';
-import { buildDimpleNormalMap, buildGolfBallMaterial } from './shared/golfBall';
+import { buildGolfBallMeshFromGLB } from './shared/golfBall';
 
 /**
  * HeroScene — Lusion-style 3D golf ball with Rapier physics, mouse-as-club
@@ -127,7 +127,6 @@ export class HeroScene implements SceneModule {
   private ballMesh!: THREE.Mesh;
   private maskMesh!: THREE.Mesh;
   private ballMaterial!: THREE.ShaderMaterial;
-  private dimpleTex?: THREE.CanvasTexture;
   private matcapTex?: THREE.Texture;
 
   // DOM references
@@ -195,7 +194,7 @@ export class HeroScene implements SceneModule {
     void _canvasEl;
   }
 
-  init(scene: THREE.Scene): void {
+  async init(scene: THREE.Scene): Promise<void> {
     // 1. Resolve DOM anchors. CLAUDE.md explicitly notes that .sphere and
     //    .sphere-stage MUST remain — we read their layout each frame.
     this.stageEl = document.querySelector<HTMLElement>('.sphere-stage');
@@ -242,10 +241,7 @@ export class HeroScene implements SceneModule {
     this.trailSvg.appendChild(this.trailPath);
     this.stageEl.appendChild(this.trailSvg);
 
-    // 3. Procedural dimple normal map.
-    this.dimpleTex = buildDimpleNormalMap(512, 250, 14, 0.55);
-
-    // 4. Matcap (loaded from /textures/matcap-pearl.png — Vite serves /public at root).
+    // 3. Matcap (loaded from /textures/matcap-pearl.png — Vite serves /public at root).
     const loader = new THREE.TextureLoader();
     this.matcapTex = loader.load('/textures/matcap-pearl.png');
     this.matcapTex.colorSpace = THREE.SRGBColorSpace;
@@ -253,13 +249,18 @@ export class HeroScene implements SceneModule {
     this.matcapTex.magFilter = THREE.LinearFilter;
     this.matcapTex.generateMipmaps = true;
 
-    // 5. Ball mesh + custom shader (shared with ContactScene via golfBall.ts).
-    const geom = new THREE.SphereGeometry(BALL_RADIUS, 64, 64);
-    this.ballMaterial = buildGolfBallMaterial(this.matcapTex, this.dimpleTex, {
+    // 4. Ball mesh from real GLB geometry (shared with ContactScene via golfBall.ts).
+    //    The GLB has dimple geometry baked in, so we let the matcap LUT alone do
+    //    the highlight pattern (no procedural normal-map needed). The loader
+    //    centers + scales the geometry so its bounding-sphere radius is 0.5,
+    //    matching BALL_RADIUS for the existing physics collider + stencil sizing.
+    const built = await buildGolfBallMeshFromGLB(this.matcapTex, {
       rimStrength: 0.35,                       // subtle, matches "monochrome restraint"
       rimColor: new THREE.Color(0x9ec3d6),     // cool-blue rim, very faint
-      dimpleStrength: 0.55,                    // visible dimples but not noisy
+      dimpleStrength: 0.55,                    // unused on GLB path (kept for parity)
     });
+    this.ballMesh = built.mesh;
+    this.ballMaterial = built.material;
 
     // Stencil setup (technique #4): ball draws ONLY where mask wrote ref=1.
     // ShaderMaterial doesn't expose stencil props in the constructor — set after.
@@ -268,7 +269,6 @@ export class HeroScene implements SceneModule {
     this.ballMaterial.stencilRef = 1;
     this.ballMaterial.stencilZPass = THREE.KeepStencilOp;
 
-    this.ballMesh = new THREE.Mesh(geom, this.ballMaterial);
     this.ballMesh.renderOrder = 2; // after mask
     this.ballMesh.frustumCulled = false; // bbox can be unreliable when we move it via physics
     scene.add(this.ballMesh);
@@ -640,7 +640,9 @@ export class HeroScene implements SceneModule {
     }
     if (this.ballMesh) {
       scene.remove(this.ballMesh);
-      this.ballMesh.geometry.dispose();
+      // NOTE: ball geometry is the SHARED GLB cache (loadGolfBallGeometry).
+      // ContactScene also references it — do NOT dispose here. Full teardown
+      // is handled by `disposeSharedGolfBallAssets` at app dispose.
     }
     if (this.maskMesh) {
       scene.remove(this.maskMesh);
@@ -648,7 +650,6 @@ export class HeroScene implements SceneModule {
       (this.maskMesh.material as THREE.Material).dispose();
     }
     if (this.ballMaterial) this.ballMaterial.dispose();
-    if (this.dimpleTex) this.dimpleTex.dispose();
     if (this.matcapTex) this.matcapTex.dispose();
     document.documentElement.classList.remove('webgl-ready');
   }

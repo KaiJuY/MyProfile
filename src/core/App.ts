@@ -10,6 +10,7 @@ import { WorkScene } from '@scenes/work/WorkScene';
 import { ToolkitScene } from '@scenes/toolkit/ToolkitScene';
 import { TrajectoryScene } from '@scenes/trajectory/TrajectoryScene';
 import { ContactScene } from '@scenes/contact/ContactScene';
+import { disposeSharedGolfBallAssets } from '@scenes/shared/golfBall';
 import { PhysicsWorld } from '@physics/PhysicsWorld';
 import { assertDefined } from '@utils/assert';
 import { getUserPrefs, type UserPrefs } from './UserPrefs';
@@ -214,6 +215,9 @@ export class App {
   dispose(): void {
     this.stop();
     this.sceneManager.dispose();
+    // Free the shared GLB golf-ball geometry now that all consuming scenes
+    // are torn down (Hero + Contact both reference the same cached geom).
+    disposeSharedGolfBallAssets();
     this.scrollManager.destroy();
     this.physics.dispose();
     this.postprocessing.dispose();
