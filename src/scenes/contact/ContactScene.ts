@@ -56,7 +56,11 @@ const PHASE_TEETER_END = 0.82; // 1.5..1.8s
 const PHASE_DROP_END = 1.0;    // 1.8..2.2s
 
 // Scroll-progress thresholds for triggering / resetting.
-const TRIGGER_SP = 0.05;
+/** Section-progress threshold at which the ball-drop animation starts.
+ *  Aligned with TrajectoryScene's contactActive handoff threshold (0.15)
+ *  so the trajectory card hides the same frame this animation begins —
+ *  clean visual handoff with no double-render of career + contact. */
+const TRIGGER_SP = 0.15;
 const RESET_SP = 0.001; // user has scrolled essentially out of the section
 
 // Camera shake (post-drop "thunk"). Pitch override is gone — the hole sits in

@@ -260,15 +260,16 @@ export class TrajectoryScene implements SceneModule {
       return;
     }
 
-    // Hand off to #contact only when contact has scrolled meaningfully into
-    // view — NOT the moment its top touches the viewport bottom. With career
-    // at 320vh and the last milestone (SunSun) active from careerSP ≈ 0.75,
-    // an early handoff (e.g. contactSP > 0.0001 at careerSP ≈ 0.69) killed
-    // the SunSun card before its window opened. contactSP > 0.5 corresponds
-    // to "contact section fully visible + user has begun reading it" given
-    // contact's natural height (~620px) and 900px viewport.
     const contactSp = this.scrollManager.sectionProgress('contact');
-    const contactActive = contactSp > 0.5;
+    // Handoff fires at contactSP=0.15 — corresponds to careerSP ~0.82,
+    // giving the last milestone (SunSun / 光陽光電) ~22vh of scroll
+    // dwell from its activation at careerSP ~0.75. Aligned with
+    // ContactScene's TRIGGER_SP so the trajectory card hides the same
+    // frame the contact ball-drop animation starts — clean visual handoff.
+    // Note: contactSP physically caps at ~0.45 at maxScrollY because
+    // the page ends before contact fully scrolls past, so anything
+    // ≥0.45 is unreachable and effectively disables the handoff.
+    const contactActive = contactSp > 0.15;
     const inSection = !contactActive && sp > 0.001 && sp < 0.999;
 
     // Perf gate: when we're far from the section AND the camera+HUD have
