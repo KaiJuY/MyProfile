@@ -149,11 +149,6 @@ export class FlythroughScene implements SceneModule {
       return;
     }
 
-    if (isMobileViewport() || getUserPrefs().reducedMotion) {
-      this.bailed = true;
-      return;
-    }
-
     const loader = new THREE.TextureLoader();
     this.matcapTex = loader.load('/textures/matcap-pearl.png');
     this.matcapTex.colorSpace = THREE.SRGBColorSpace;
