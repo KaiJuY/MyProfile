@@ -701,6 +701,140 @@
     .stage-caption { left: 20px; max-width: 60vw; }
     .stage-progress { right: 20px; }
   }
+
+  /* ─── Phone breakpoint (≤700px) ─── */
+  @media (max-width: 700px) {
+    /* Sections: tighter padding so the headlines + cards breathe at 390px. */
+    section { padding: 64px 18px; }
+
+    /* Nav: brand + tag wrap because the brand string includes a 9+ YRS subtag.
+       Hide the bracketed subtag below 700px so the row still fits and the
+       lang/CTA on the right stay visible. */
+    .nav { padding: 12px 16px; }
+    .nav .brand { font-size: 13px; gap: 8px; flex-shrink: 1; min-width: 0; }
+    .nav .brand .mono { display: none; }
+    .nav .brand > span[style*="ink-3"] { display: none; }
+    .nav-cta { font-size: 11px; padding: 7px 12px; }
+    .nav-lang { font-size: 10px; padding: 7px 10px; min-width: 38px; }
+    .nav-right { gap: 8px; }
+
+    /* Hero: smaller headline, hero-meta wraps, sphere shrinks so it sits below
+       text without overlap. The 3 stat blocks already grid 3-up and the
+       28-36px stat numbers stay legible. */
+    .hero { padding-top: 88px; }
+    .hero-meta {
+      flex-wrap: wrap; row-gap: 8px; column-gap: 12px;
+      font-size: 10px; letter-spacing: 0.14em; margin-bottom: 20px;
+    }
+    .hero-title {
+      font-size: clamp(38px, 11vw, 60px);
+      line-height: 0.96; margin-bottom: 18px;
+    }
+    .hero-sub { font-size: 15px; margin-bottom: 28px; }
+    .hero-grid { gap: 28px; }
+    .hero-stats { padding-top: 20px; gap: 8px; }
+    .stat-num { font-size: 28px; }
+    .stat-lbl { font-size: 10px; letter-spacing: 0.12em; }
+    .sphere-stage { max-width: 240px; }
+    .sphere-hud, .sphere-hud-r { display: none; }
+    .scroll-cue { bottom: 18px; font-size: 9px; }
+
+    /* Flythrough: reduce sticky scroll length so users don't scroll 16 phone
+       screens to get past. The choreography reads its own progress from the
+       rail height — 280vh still leaves room for all four card frames. */
+    .flythrough-rail { height: 280vh; }
+    /* Stage caption smaller + closer to edge; the WebGL ball mesh is centered
+       so the caption now sits beside (below) it. */
+    .stage-caption {
+      left: 16px; right: 16px; max-width: none;
+      top: auto; bottom: 24px; transform: none;
+    }
+    .stage-caption .step { font-size: 9px; margin-bottom: 8px; }
+    .stage-caption h3 { font-size: 28px; margin-bottom: 8px; }
+    .stage-caption p { font-size: 13px; line-height: 1.45; }
+    .stage-progress {
+      right: 12px; top: 84px; transform: none;
+      flex-direction: row; gap: 10px;
+    }
+    .stage-progress .bar { width: 16px; }
+    .stage-progress .seg.active .bar { width: 28px; }
+    /* Floating cards in flythrough use inline width:240–260px — clamp so they
+       fit a 390px viewport with 16px gutters. */
+    .glass-card { max-width: calc(100vw - 48px); }
+    .glass-card h4 { font-size: 15px; }
+    .glass-card p { font-size: 12px; line-height: 1.45; }
+
+    /* Section heads: stack vertically instead of justifying space-between so
+       the meta line doesn't crash into the h2. */
+    .section-head {
+      flex-direction: column; align-items: flex-start;
+      gap: 14px; margin-bottom: 36px;
+    }
+    .section-head .eyebrow { font-size: 10px; margin-bottom: 10px; }
+    .section-head h2 {
+      font-size: clamp(30px, 8.5vw, 44px);
+      line-height: 1.02; max-width: 100%;
+    }
+
+    /* Projects: tighter card padding so 12-grid → 1-col cards aren't huge. */
+    .project { padding: 22px 18px; min-height: auto; }
+    .project.feat, .project.wide { min-height: auto; }
+    .project .pbody h3 { font-size: 20px; margin: 12px 0 8px; }
+    .project .pbody p { font-size: 13px; }
+    .project.wide { gap: 20px; padding: 22px 18px; }
+    .project.wide .pviz { min-height: 140px; }
+    .project.wide .pviz img { max-height: 200px; }
+    .project.wide h3 { font-size: 22px !important; }
+
+    /* Bag / toolkit: club row already 60px 1fr auto — shrink the num column
+       and trim font sizes so the brand string (long) wraps cleanly. */
+    .club { grid-template-columns: 44px 1fr auto; gap: 14px; padding: 18px 0; }
+    .club-num { font-size: 11px; }
+    .club-name { font-size: 15px; }
+    .club-brand { font-size: 10px; letter-spacing: 0.08em; line-height: 1.5; }
+    .club-loft { font-size: 12px; }
+
+    /* Scorecard: 9-hole grid is fine on 390px (each hole ~32px), but the
+       4-up footer stats grid below wraps to 2-up so labels stay readable. */
+    .scorecard { padding: 22px 16px; }
+    .sc-head { flex-wrap: wrap; gap: 12px; }
+    .sc-head h4 { font-size: 17px; }
+    .sc-head .score { font-size: 28px; }
+    .holes { gap: 3px; }
+    .hole .h-n { font-size: 8px; }
+    .hole .h-s { font-size: 11px; }
+    .scorecard > div[style*="grid-template-columns: repeat(4"] {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 16px !important;
+    }
+
+    /* Timeline: the desktop layout reserves 100px on the left for absolute-
+       positioned year labels. On mobile we move the year inline above the
+       title so the content gets the full width. */
+    .timeline { padding-left: 28px; max-width: 100%; }
+    .timeline::before { left: 8px; }
+    .tl-item {
+      grid-template-columns: 1fr; gap: 8px;
+      padding: 18px 0;
+    }
+    .tl-item::before { left: -25px; top: 24px; width: 9px; height: 9px; }
+    .tl-year {
+      position: static; left: auto; top: auto; width: auto;
+      text-align: left; font-size: 11px; margin-bottom: 2px;
+    }
+    .tl-item h4 { font-size: 18px; }
+    .tl-item .tl-org { font-size: 10px; margin-bottom: 10px; letter-spacing: 0.12em; }
+    .tl-item p { font-size: 13px; line-height: 1.55; }
+
+    /* Contact: shrink the giant headline + tighten the side links. */
+    .contact { gap: 32px; padding-bottom: 48px; }
+    .contact h2 { font-size: clamp(34px, 9vw, 52px); }
+    .contact-side a { font-size: 12px; padding: 12px 0; }
+    .footnote {
+      flex-direction: column; gap: 8px; align-items: flex-start;
+      padding: 18px 18px; font-size: 9px; letter-spacing: 0.14em;
+    }
+  }
 </style>
 </head>
 <body>
