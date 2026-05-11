@@ -42,8 +42,19 @@ const TEE_VISUAL_GAIN = 1.6;
 /** Idle ball spin (rad/s) when the section is in view — visual life only. */
 const BALL_IDLE_SPIN = 0.6;
 
-/** Same PRE constant the inline JS uses (search index.html for `const PRE`). */
-const PRE_IMPACT_SP = 0.06;
+/** Scroll-progress threshold (in `scrollManager.sectionProgress('flythrough')`
+ *  units) at which the impact moment fires — the ball lifts off the tee.
+ *
+ *  This is the inline JS's `const PRE = 0.06` CONVERTED to scrollManager units.
+ *  The inline JS computes its progress from `-flyRail.top / (flyRail.offsetHeight
+ *  - innerHeight)`, which only covers the sticky-pinned portion of the scroll
+ *  (sticky engages at scrollManager secProgress ≈ 0.172, disengages at ≈ 0.828
+ *  for the rail at 480vh + 100vh viewport = 580vh total). So inline PRE=0.06
+ *  corresponds to scrollManager secProgress = 0.172 + 0.06 * (0.828 - 0.172)
+ *  ≈ 0.211. Using the inline PRE value directly (0.06) caused the WebGL FX to
+ *  fire BEFORE the sticky stage even engaged — impact played out while user
+ *  was still scrolling INTO the section. */
+const PRE_IMPACT_SP = 0.21;
 
 /** Pixel threshold — when the CSS ball/tee rect centers diverge by MORE than
  *  this in screen-space, we treat the ball as "launched" and detach it from
