@@ -89,22 +89,16 @@ export class Postprocessing {
   }
 
   init(): void {
-    // Decide initial quality.
+    // FX quality LOCKED at LOW for all platforms (desktop + mobile).
+    // `manualOverride = true` disables the FPS-based auto-promotion path
+    // inside render() so the level can't drift back up to MEDIUM/HIGH even
+    // if FPS is sustained high. Manual toggle button still works for
+    // ad-hoc inspection — the lock applies to automatic behavior only.
     //
-    // Perf pass — desktop now defaults to MEDIUM (Bloom + ACES tonemap), not
-    // HIGH (Bloom + chromatic aberration + noise + ACES). The full HIGH
-    // pipeline costs ~3-4ms extra per frame on integrated GPUs and was the
-    // single biggest contributor to "page feels laggy" at boot. We auto-
-    // upgrade to HIGH after sustained ≥55fps for 3s if the device can clearly
-    // handle it.
-    let initial: QualityLevel;
-    if (this.prefs.qualityOverride) {
-      initial = this.prefs.qualityOverride;
-    } else if (this.prefs.isMobile || this.prefs.reducedMotion) {
-      initial = 'low';
-    } else {
-      initial = 'medium';
-    }
+    // qualityOverride from prefs still takes precedence if set (e.g.
+    // `?quality=high` URL param) so power users can opt out.
+    const initial: QualityLevel = this.prefs.qualityOverride ?? 'low';
+    this.manualOverride = true;
     this.setQuality(initial);
     this.injectToggle();
   }
