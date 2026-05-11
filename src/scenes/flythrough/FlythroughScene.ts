@@ -124,6 +124,15 @@ export class FlythroughScene implements SceneModule {
   private impactElapsed = -1;
   private impactArmed = true;
 
+  /** Previous-frame `inFlight` value. Used to fire the impact FX on the
+   *  exact frame inFlight transitions false→true (i.e. when secProgress
+   *  first crosses PRE_IMPACT_SP). Carries across gate frames (we DON'T
+   *  reset it in the visibility gate) so scroll-up entry from below at
+   *  a position where the CSS ball is mid-flight does NOT spuriously fire
+   *  — wasInFlight will be `true` from the last non-gated frame in that
+   *  scenario, making the transition test false. */
+  private wasInFlight = false;
+
   /** Time elapsed (seconds) since the impact event fired. -1 = pre-impact
    *  (tee upright + opaque). Once impact triggers we set to 0 and tick by dt
    *  each frame; tilt + fade are derived from this so they're synced to the
@@ -133,18 +142,6 @@ export class FlythroughScene implements SceneModule {
   /** Track impact-x/z so the FX nodes can be re-anchored each trigger. */
   private impactX = 0;
   private impactZ = 0;
-
-  /** Previous-frame ball↔tee divergence in CSS pixels. Used to detect the
-   *  EXACT frame the ball starts moving away from the tee — the moment we
-   *  fire the impact FX (smoke, rays, shockwave, particles).
-   *
-   *  Initialized to +Infinity (not 0) as a "no prior sample" sentinel. With
-   *  this value the threshold-crossing test `lastDiv <= 30 && curr > 30`
-   *  evaluates to false on the first frame regardless of `curr`, preventing
-   *  a spurious trigger when the section is entered from a scroll position
-   *  where the CSS ball is already mid-flight (e.g. scroll-up from below).
-   *  Once divergence is sampled, subsequent frames use the real previous value. */
-  private lastDivergencePx = Number.POSITIVE_INFINITY;
 
   constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
@@ -568,7 +565,6 @@ export class FlythroughScene implements SceneModule {
       this.impactArmed = true;
       this.impactElapsed = -1;
       this.teeAnimElapsed = -1;
-      this.lastDivergencePx = Number.POSITIVE_INFINITY;
       return;
     }
 
@@ -672,15 +668,16 @@ export class FlythroughScene implements SceneModule {
     }
 
     // ── Impact FX trigger ────────────────────────────────────────────────
-    // Fire on the EXACT frame the ball first separates from the tee — i.e.
-    // when the ball↔tee screen-space distance crosses LAUNCH_DIVERGENCE_PX
-    // upward. Coupling to the visible "ball-leaving-tee" event (rather than a
-    // scroll-progress proxy) means the FX stays synced to the actual hit
-    // moment regardless of scroll velocity / Lenis easing.
-    const justCrossed =
-      this.lastDivergencePx <= LAUNCH_DIVERGENCE_PX &&
-      divergencePx > LAUNCH_DIVERGENCE_PX;
-    if (this.impactArmed && inFlight && justCrossed) {
+    // Fire on the EXACT frame `inFlight` transitions false → true (i.e. when
+    // secProgress first crosses PRE_IMPACT_SP). This is the same moment the
+    // inline JS in index.html starts ballPath() — both consume the same
+    // scrollManager.sectionProgress, so the trigger stays synced with the CSS
+    // animation's launch frame. Using ball↔tee rect divergence as the trigger
+    // signal was abandoned because the ball at rest already sits ~126px above
+    // the tee in CSS (ball-on-top-of-tee), so the rect centers never coincide
+    // and a threshold-crossing test of that distance can't detect a real launch.
+    const justLaunched = inFlight && !this.wasInFlight;
+    if (this.impactArmed && justLaunched) {
       this.impactArmed = false;
       this.impactElapsed = 0;
       this.teeAnimElapsed = 0;
@@ -745,12 +742,6 @@ export class FlythroughScene implements SceneModule {
       this.teeAnimElapsed += dt;
     }
 
-    // Re-arm when the ball returns to the tee — divergence drops back below
-    // the threshold (e.g. user scrolls back up before impact, or the section
-    // exits and re-enters).
-    if (divergencePx <= LAUNCH_DIVERGENCE_PX && !this.impactArmed) {
-      this.impactArmed = true;
-    }
     // If we scroll back BEFORE in-flight, also clear any in-progress FX so
     // the next launch starts cleanly.
     if (!inFlight) {
@@ -762,8 +753,8 @@ export class FlythroughScene implements SceneModule {
       if (this.teeAnimElapsed >= 0) this.teeAnimElapsed = -1;
     }
 
-    // Save divergence for next frame's threshold-crossing detection.
-    this.lastDivergencePx = divergencePx;
+    // Save inFlight for next frame's transition detection.
+    this.wasInFlight = inFlight;
   }
 
   /** Re-parent the ball mesh back into the combined group at its original
