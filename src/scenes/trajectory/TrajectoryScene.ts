@@ -102,6 +102,10 @@ export class TrajectoryScene implements SceneModule {
    *  default. Used to skip the dampers entirely on subsequent frames. */
   private cameraSettled = false;
 
+  /** True when init bailed (mobile viewport at boot). All per-frame logic
+   *  and dispose cleanup must short-circuit because no resources were built. */
+  private bailed = false;
+
   constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
     this.scrollManager = scrollManager;
@@ -109,6 +113,18 @@ export class TrajectoryScene implements SceneModule {
 
   init(scene: THREE.Scene): void {
     this.scene = scene;
+
+    // Mobile-viewport bail. On viewports below the 901px breakpoint used by
+    // src/style.css (where the desktop-only `.webgl-ready section#career
+    // .timeline { display: none }` rule is gated by `@media (min-width: 901px)`),
+    // the original `.timeline` DOM is visible. Skip mounting the WebGL
+    // trajectory entirely so the two don't double-render AND so the animation
+    // isn't truncated by mobile's natural section height (the 320vh min-height
+    // is desktop-only too).
+    if (typeof window !== 'undefined' && window.innerWidth < 901) {
+      this.bailed = true;
+      return;
+    }
 
     // Wave 6: skip the entire trajectory build on mobile. The original
     // `.timeline` HTML stays untouched and forms the experience there.
@@ -239,6 +255,7 @@ export class TrajectoryScene implements SceneModule {
   }
 
   update(dt: number): void {
+    if (this.bailed) return;
     this.frame++;
     const sp = this.scrollManager.sectionProgress(SECTION_ID);
 
@@ -514,6 +531,7 @@ export class TrajectoryScene implements SceneModule {
   }
 
   dispose(scene: THREE.Scene): void {
+    if (this.bailed) return;
     if (this.mounted) scene.remove(this.group);
     for (const m of this.markers) m.dispose();
     this.markers.length = 0;

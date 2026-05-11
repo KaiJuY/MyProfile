@@ -743,19 +743,10 @@
        screens to get past. The choreography reads its own progress from the
        rail height — 280vh still leaves room for all four card frames. */
     .flythrough-rail { height: 280vh; }
-    /* Stage caption smaller + closer to edge; the WebGL ball mesh is centered
-       so the caption now sits beside (below) it. */
-    .stage-caption {
-      left: 16px; right: 16px; max-width: none;
-      top: auto; bottom: 24px; transform: none;
-    }
+    /* Stage caption font shrinks only — positioning stays at the desktop defaults. */
     .stage-caption .step { font-size: 9px; margin-bottom: 8px; }
     .stage-caption h3 { font-size: 28px; margin-bottom: 8px; }
     .stage-caption p { font-size: 13px; line-height: 1.45; }
-    .stage-progress {
-      right: 12px; top: 84px; transform: none;
-      flex-direction: row; gap: 10px;
-    }
     .stage-progress .bar { width: 16px; }
     .stage-progress .seg.active .bar { width: 28px; }
     /* Floating cards in flythrough use inline width:240–260px — clamp so they
@@ -764,12 +755,7 @@
     .glass-card h4 { font-size: 15px; }
     .glass-card p { font-size: 12px; line-height: 1.45; }
 
-    /* Section heads: stack vertically instead of justifying space-between so
-       the meta line doesn't crash into the h2. */
-    .section-head {
-      flex-direction: column; align-items: flex-start;
-      gap: 14px; margin-bottom: 36px;
-    }
+    /* Section heads: font shrinks only — original horizontal flex layout retained. */
     .section-head .eyebrow { font-size: 10px; margin-bottom: 10px; }
     .section-head h2 {
       font-size: clamp(30px, 8.5vw, 44px);
@@ -808,20 +794,8 @@
       gap: 16px !important;
     }
 
-    /* Timeline: the desktop layout reserves 100px on the left for absolute-
-       positioned year labels. On mobile we move the year inline above the
-       title so the content gets the full width. */
-    .timeline { padding-left: 28px; max-width: 100%; }
-    .timeline::before { left: 8px; }
-    .tl-item {
-      grid-template-columns: 1fr; gap: 8px;
-      padding: 18px 0;
-    }
-    .tl-item::before { left: -25px; top: 24px; width: 9px; height: 9px; }
-    .tl-year {
-      position: static; left: auto; top: auto; width: auto;
-      text-align: left; font-size: 11px; margin-bottom: 2px;
-    }
+    /* Timeline: keep original desktop layout structure on mobile too —
+       only font shrinks below remain. */
     .tl-item h4 { font-size: 18px; }
     .tl-item .tl-org { font-size: 10px; margin-bottom: 10px; letter-spacing: 0.12em; }
     .tl-item p { font-size: 13px; line-height: 1.55; }
@@ -831,7 +805,7 @@
     .contact h2 { font-size: clamp(34px, 9vw, 52px); }
     .contact-side a { font-size: 12px; padding: 12px 0; }
     .footnote {
-      flex-direction: column; gap: 8px; align-items: flex-start;
+      gap: 8px;
       padding: 18px 18px; font-size: 9px; letter-spacing: 0.14em;
     }
   }
