@@ -255,7 +255,15 @@ export class TrajectoryScene implements SceneModule {
   }
 
   update(dt: number): void {
-    if (this.bailed) return;
+    // Live-viewport bail — handles the resize-after-boot case (DevTools
+    // mobile mode triggered after page load). The init-time bail only
+    // catches mobile cold-boots. The CSS @media (max-width: 900px) rule
+    // in src/style.css force-hides the trajectory-card overlay; this
+    // early-return ALSO stops the per-frame .tl-item opacity writes that
+    // would otherwise fade-out some timeline items.
+    if (this.bailed || (typeof window !== 'undefined' && window.innerWidth < 901)) {
+      return;
+    }
     this.frame++;
     const sp = this.scrollManager.sectionProgress(SECTION_ID);
 

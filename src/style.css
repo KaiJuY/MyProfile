@@ -160,6 +160,24 @@ body {
   }
 }
 
+/* Reactive mobile fallback for the Career section.
+ *
+ * Below 901px the desktop-only WebGL trajectory takeover doesn't apply.
+ * If the page booted at desktop and the viewport later resized to mobile
+ * (DevTools mobile mode), TrajectoryScene.init() ran without bailing and
+ * mounted the .trajectory-card overlay + writes inline opacity to each
+ * .tl-item every frame. This CSS forces a clean fallback regardless:
+ *   - hides any trajectory-card that was mounted
+ *   - overrides the inline opacity writes so all .tl-item nodes are
+ *     fully visible (matching the original timeline design).
+ *
+ * Pair this with the live-viewport bail in TrajectoryScene.update()
+ * so the per-frame DOM writes also stop. */
+@media (max-width: 900px) {
+  .trajectory-card { display: none !important; }
+  section#career .tl-item { opacity: 1 !important; }
+}
+
 .trajectory-card {
   /* Issue #2: bigger card, pinned right of the active ring. Width bumped
    * 320 → 420; max-width follows. position/transform/opacity driven by JS —
