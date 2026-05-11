@@ -62,11 +62,11 @@ const PRE_IMPACT_SP = 0.21;
 const LAUNCH_DIVERGENCE_PX = 30;
 
 /** Shockwave + particle + smoke + lightray config — desktop only. */
-const SHOCKWAVE_DURATION_S = 0.55;
-const SHOCKWAVE_MAX_RADIUS = 0.9;     // tighter halo, less "explosion"
-const PARTICLE_COUNT = 18;            // fewer, more refined
-const PARTICLE_DURATION_S = 1.0;      // linger longer (dust drifts)
-const PARTICLE_MAX_SPEED = 1.8;       // slower, dust-like
+const SHOCKWAVE_DURATION_S = 0.45;
+const SHOCKWAVE_MAX_RADIUS = 0.3;     // tighter halo, less "explosion"
+const PARTICLE_COUNT = 8;             // very sparse — a few suspended motes, not a burst
+const PARTICLE_DURATION_S = 1.4;      // slow lingering float
+const PARTICLE_MAX_SPEED = 1.0;       // gentle drift, not blast
 const SMOKE_COUNT_DESKTOP = 22;
 const SMOKE_COUNT_MOBILE = 12;
 const SMOKE_DURATION_S = 1.3;
@@ -187,10 +187,10 @@ export class FlythroughScene implements SceneModule {
     // (b) detach the ball into the scene root and anchor it to #flyBall while
     // the tee stays parented to `combined.group` at #tee.
     this.combined = await buildBallAndTeeGroup(this.matcapTex, {
-      rimStrength: 0.45,
-      rimColor: new THREE.Color(0x9ec3d6),
+      rimStrength: 0.70,
+      rimColor: new THREE.Color(0xFF6A00),
       useDimpleMap: false,
-      matcapSoftness: 0.55,
+      matcapSoftness: 0.25,
     });
     this.combined.group.visible = false;
     scene.add(this.combined.group);
@@ -223,7 +223,7 @@ export class FlythroughScene implements SceneModule {
     const ringMat = new THREE.ShaderMaterial({
       uniforms: {
         uProgress: { value: 0.0 },
-        uColor: { value: new THREE.Color(0xfff1d6) },
+        uColor: { value: new THREE.Color(0xff6a00) },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -281,7 +281,7 @@ export class FlythroughScene implements SceneModule {
       dirs[i * 3 + 1] = cy / len;
       dirs[i * 3 + 2] = cz / len;
       speeds[i] = (0.5 + Math.random() * 0.5) * PARTICLE_MAX_SPEED;
-      sizes[i] = 10 + Math.random() * 14;    // smaller particles for refinement
+      sizes[i] = 6 + Math.random() * 10;     // tiny motes (6-16px range)
     }
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -303,8 +303,8 @@ export class FlythroughScene implements SceneModule {
         varying float vLife;
         void main() {
           float t = clamp(uTime / uDuration, 0.0, 1.0);
-          float d = aSpeed * (1.0 - exp(-3.5 * t));
-          vec3 offset = aDir * d + vec3(0.0, -0.45 * t * t, 0.0);
+          float d = aSpeed * (1.0 - exp(-2.0 * t));
+          vec3 offset = aDir * d + vec3(0.0, -0.20 * t * t, 0.0);
           vec3 worldPos = position + offset;
           vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
           gl_Position = projectionMatrix * mv;
@@ -319,7 +319,7 @@ export class FlythroughScene implements SceneModule {
         void main() {
           vec2 c = gl_PointCoord - 0.5;
           float r = length(c);
-          float a = smoothstep(0.5, 0.0, r) * vLife * 0.75; // softer max alpha
+          float a = smoothstep(0.5, 0.0, r) * vLife * 0.32; // very dim — accent only
           // Dust: warm-gray-white core fading to cooler gray.
           vec3 warm = vec3(0.95, 0.90, 0.82);
           vec3 cool = vec3(0.55, 0.55, 0.58);
