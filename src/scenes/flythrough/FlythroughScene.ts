@@ -64,6 +64,10 @@ const LIGHTRAY_COUNT = 18;
 const LIGHTRAY_DURATION_S = 0.55;
 const LIGHTRAY_MAX_LENGTH = 1.2;
 
+/** Tee tilt + fade ramp duration after impact, seconds. Roughly matches the
+ *  shockwave for a unified "impact moment" feel. */
+const TEE_ANIM_DURATION_S = 0.6;
+
 function isMobileViewport(): boolean {
   if (typeof window === 'undefined') return false;
   if (window.innerWidth < 768) return true;
@@ -119,6 +123,12 @@ export class FlythroughScene implements SceneModule {
   /** Time elapsed since the most recent impact trigger. -1 = inactive. */
   private impactElapsed = -1;
   private impactArmed = true;
+
+  /** Time elapsed (seconds) since the impact event fired. -1 = pre-impact
+   *  (tee upright + opaque). Once impact triggers we set to 0 and tick by dt
+   *  each frame; tilt + fade are derived from this so they're synced to the
+   *  actual divergence-detected hit moment instead of scroll progress. */
+  private teeAnimElapsed = -1;
 
   /** Track impact-x/z so the FX nodes can be re-anchored each trigger. */
   private impactX = 0;
@@ -550,14 +560,11 @@ export class FlythroughScene implements SceneModule {
       this.hideAllFX();
       this.impactArmed = true;
       this.impactElapsed = -1;
+      this.teeAnimElapsed = -1;
       this.lastDivergencePx = 0;
       return;
     }
 
-    const flightP = Math.max(
-      0,
-      Math.min(1, (secProgress - PRE_IMPACT_SP) / (1 - PRE_IMPACT_SP))
-    );
     const inFlight = secProgress > PRE_IMPACT_SP;
     this.combined.group.visible = true;
 
@@ -576,12 +583,18 @@ export class FlythroughScene implements SceneModule {
       teeMeshScale = teeSize.height * TEE_VISUAL_GAIN;
       this.combined.group.scale.setScalar(teeMeshScale);
 
-      // Tilt the tee + ball during flight (CSS does the same).
-      const tiltDeg = inFlight ? Math.min(45, flightP * 80) : 0;
+      // Tilt the tee + ball post-impact. Driven by teeAnimElapsed (synced to the
+      // divergence-based impact moment) rather than scroll progress, so the tee
+      // stays upright until the ball visibly leaves and only then begins tilting.
+      const teeAnimP =
+        this.teeAnimElapsed < 0 ? 0 : Math.min(1, this.teeAnimElapsed / TEE_ANIM_DURATION_S);
+      const tiltDeg = teeAnimP * 45;
       this.combined.group.rotation.set(0, 0, -(tiltDeg * Math.PI) / 180);
 
-      // Fade the tee post-impact.
-      const teeOpacity = inFlight ? Math.max(0, 1 - flightP * 4) : 1;
+      // Fade the tee out as it tips over. Same timer; reaches near-zero at teeAnimP ~0.25
+      // (fade is 4× faster than tilt so the tee disappears mid-tip).
+      const teeOpacity =
+        this.teeAnimElapsed < 0 ? 1 : Math.max(0, 1 - teeAnimP * 4);
       const c = this.combined.teeMaterial.color;
       c.setRGB(0.722 * teeOpacity, 0.541 * teeOpacity, 0.333 * teeOpacity);
       this.combined.teeMesh.visible = teeOpacity >= 0.01;
@@ -663,6 +676,7 @@ export class FlythroughScene implements SceneModule {
     if (this.impactArmed && inFlight && justCrossed) {
       this.impactArmed = false;
       this.impactElapsed = 0;
+      this.teeAnimElapsed = 0;
       const impactX = this.impactX;
       const impactY = teeWorldTopY ?? 0;
       const impactZ = this.impactZ;
@@ -716,6 +730,14 @@ export class FlythroughScene implements SceneModule {
       }
     }
 
+    // Tick tee-animation timer independently of impactElapsed (which resets when
+    // all FX finish). teeAnimElapsed holds the tilted/faded state for the rest of
+    // the section view; it's only cleared when the section leaves view or scrolls
+    // back to pre-flight.
+    if (this.teeAnimElapsed >= 0) {
+      this.teeAnimElapsed += dt;
+    }
+
     // Re-arm when the ball returns to the tee — divergence drops back below
     // the threshold (e.g. user scrolls back up before impact, or the section
     // exits and re-enters).
@@ -730,6 +752,7 @@ export class FlythroughScene implements SceneModule {
         this.impactElapsed = -1;
         this.hideAllFX();
       }
+      if (this.teeAnimElapsed >= 0) this.teeAnimElapsed = -1;
     }
 
     // Save divergence for next frame's threshold-crossing detection.
