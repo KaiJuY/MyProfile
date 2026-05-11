@@ -272,16 +272,16 @@ export class FlythroughScene implements SceneModule {
       // Leftward hemisphere — azim centered on -X (Math.PI), spread ±70°.
       const azim = Math.PI + (Math.random() - 0.5) * (Math.PI * 70 / 180) * 2;
       // Vertical spread: small upward bias (dust rises a bit but doesn't rocket).
-      const elev = (Math.random() - 0.3) * 0.6;  // mostly horizontal, slight up
+      const elev = (Math.random() - 0.3) * 0.4;  // mostly horizontal, slight up
       const cx = Math.cos(elev) * Math.cos(azim);
       const cy = Math.sin(elev);
-      const cz = Math.cos(elev) * Math.sin(azim) * 0.4;  // less depth scatter
+      const cz = Math.cos(elev) * Math.sin(azim) * 0.2;  // less depth scatter
       const len = Math.hypot(cx, cy, cz);
       dirs[i * 3 + 0] = cx / len;
       dirs[i * 3 + 1] = cy / len;
       dirs[i * 3 + 2] = cz / len;
       speeds[i] = (0.5 + Math.random() * 0.5) * PARTICLE_MAX_SPEED;
-      sizes[i] = 6 + Math.random() * 10;     // tiny motes (6-16px range)
+      sizes[i] = 2 + Math.random() * 8;     // tiny motes (6-16px range)
     }
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -319,7 +319,7 @@ export class FlythroughScene implements SceneModule {
         void main() {
           vec2 c = gl_PointCoord - 0.5;
           float r = length(c);
-          float a = smoothstep(0.5, 0.0, r) * vLife * 0.32; // very dim — accent only
+          float a = smoothstep(0.5, 0.0, r) * vLife * 0.16; // very dim — accent only
           // Dust: warm-gray-white core fading to cooler gray.
           vec3 warm = vec3(0.95, 0.90, 0.82);
           vec3 cool = vec3(0.55, 0.55, 0.58);

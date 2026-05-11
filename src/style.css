@@ -149,12 +149,14 @@ body {
     display: none;
   }
   /* Reserve scroll real estate so the user can scrub through all four
-   * milestones. Without this, hiding `.timeline` collapses the section to
-   * just the header and the trajectory animation flashes through in <half a
-   * viewport. 220vh = roughly the same scroll distance as the original
-   * timeline rendered. */
+   * milestones at a comfortable pace AND the LAST milestone's cross-fade
+   * fully completes before #contact's ball-drop animation begins (Contact
+   * starts mounting as soon as its sectionProgress > 0, which happens while
+   * the user is still in the last portion of #career — extra dwell here
+   * prevents the SunSun card from being cut off by the contact transition).
+   * Bumped from 220vh in wave 19. */
   .webgl-ready section#career {
-    min-height: 220vh;
+    min-height: 320vh;
   }
 }
 
