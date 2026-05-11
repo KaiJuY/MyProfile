@@ -136,8 +136,15 @@ export class FlythroughScene implements SceneModule {
 
   /** Previous-frame ball↔tee divergence in CSS pixels. Used to detect the
    *  EXACT frame the ball starts moving away from the tee — the moment we
-   *  fire the impact FX (smoke, rays, shockwave, particles). */
-  private lastDivergencePx = 0;
+   *  fire the impact FX (smoke, rays, shockwave, particles).
+   *
+   *  Initialized to +Infinity (not 0) as a "no prior sample" sentinel. With
+   *  this value the threshold-crossing test `lastDiv <= 30 && curr > 30`
+   *  evaluates to false on the first frame regardless of `curr`, preventing
+   *  a spurious trigger when the section is entered from a scroll position
+   *  where the CSS ball is already mid-flight (e.g. scroll-up from below).
+   *  Once divergence is sampled, subsequent frames use the real previous value. */
+  private lastDivergencePx = Number.POSITIVE_INFINITY;
 
   constructor(camera: THREE.PerspectiveCamera, scrollManager: ScrollManager) {
     this.camera = camera;
@@ -561,7 +568,7 @@ export class FlythroughScene implements SceneModule {
       this.impactArmed = true;
       this.impactElapsed = -1;
       this.teeAnimElapsed = -1;
-      this.lastDivergencePx = 0;
+      this.lastDivergencePx = Number.POSITIVE_INFINITY;
       return;
     }
 
