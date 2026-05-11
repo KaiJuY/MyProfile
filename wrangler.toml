@@ -1,0 +1,17 @@
+# Cloudflare Pages configuration.
+#
+# This file ONLY tells Cloudflare WHERE the built output lives. It does NOT
+# replace the build-command setting in the Cloudflare Pages dashboard:
+#
+#   Pages project → Settings → Builds & deployments → Build configurations
+#     Build command: npm run build
+#     Build output directory: dist
+#
+# Without the dashboard build command, Cloudflare will log
+#   "No build command specified. Skipping build step."
+# and upload the Vite SOURCE files verbatim, leaving the browser to fetch
+# /src/main.ts (which 404s, breaking the entire WebGL pipeline).
+
+name = "myprofile-ec7"
+compatibility_date = "2025-05-11"
+pages_build_output_dir = "./dist"
