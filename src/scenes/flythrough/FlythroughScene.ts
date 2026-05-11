@@ -62,18 +62,18 @@ const PRE_IMPACT_SP = 0.21;
 const LAUNCH_DIVERGENCE_PX = 30;
 
 /** Shockwave + particle + smoke + lightray config — desktop only. */
-const SHOCKWAVE_DURATION_S = 0.6;     // 600ms ring expand
-const SHOCKWAVE_MAX_RADIUS = 1.5;
-const PARTICLE_COUNT = 28;            // trimmed (was 40); smoke + rays add bulk
-const PARTICLE_DURATION_S = 0.85;
-const PARTICLE_MAX_SPEED = 2.6;
-const SMOKE_COUNT_DESKTOP = 24;
+const SHOCKWAVE_DURATION_S = 0.55;
+const SHOCKWAVE_MAX_RADIUS = 0.9;     // tighter halo, less "explosion"
+const PARTICLE_COUNT = 18;            // fewer, more refined
+const PARTICLE_DURATION_S = 1.0;      // linger longer (dust drifts)
+const PARTICLE_MAX_SPEED = 1.8;       // slower, dust-like
+const SMOKE_COUNT_DESKTOP = 22;
 const SMOKE_COUNT_MOBILE = 12;
-const SMOKE_DURATION_S = 1.2;
-const SMOKE_MAX_SIZE = 0.6;           // world-unit final radius per puff (kept for tuning reference)
-const LIGHTRAY_COUNT = 18;
-const LIGHTRAY_DURATION_S = 0.55;
-const LIGHTRAY_MAX_LENGTH = 1.2;
+const SMOKE_DURATION_S = 1.3;
+const SMOKE_MAX_SIZE = 0.55;          // world-unit final radius per puff (kept for tuning reference)
+const LIGHTRAY_COUNT = 10;            // fewer rays
+const LIGHTRAY_DURATION_S = 0.5;
+const LIGHTRAY_MAX_LENGTH = 0.8;      // shorter, less reach
 
 /** Tee tilt + fade ramp duration after impact, seconds. Roughly matches the
  *  shockwave for a unified "impact moment" feel. */
@@ -223,7 +223,7 @@ export class FlythroughScene implements SceneModule {
     const ringMat = new THREE.ShaderMaterial({
       uniforms: {
         uProgress: { value: 0.0 },
-        uColor: { value: new THREE.Color(0xff6a00) },
+        uColor: { value: new THREE.Color(0xfff1d6) },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -241,11 +241,14 @@ export class FlythroughScene implements SceneModule {
           vec2 c = vUv - 0.5;
           float r = length(c) * 2.0;
           float ringR = uProgress;
-          float thickness = mix(0.18, 0.06, uProgress);
-          float band = 1.0 - smoothstep(thickness, thickness + 0.04, abs(r - ringR));
+          // Soft halo: bright at the expanding edge, fading inward and outward.
+          float thickness = 0.35;  // wider band → halo, not crisp ring
+          float band = 1.0 - smoothstep(0.0, thickness, abs(r - ringR));
+          // Inner glow that fills from center, fading as the ring expands.
+          float core = (1.0 - smoothstep(0.0, ringR * 0.6 + 0.05, r)) * (1.0 - uProgress);
           float life = 1.0 - uProgress;
-          float alpha = band * life * step(r, 1.0);
-          vec3 col = uColor + vec3(0.4) * pow(life, 2.0);
+          float alpha = (band * 0.55 + core * 0.45) * life * step(r, 1.0);
+          vec3 col = uColor;
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -266,17 +269,19 @@ export class FlythroughScene implements SceneModule {
     const speeds = new Float32Array(PARTICLE_COUNT);
     const sizes = new Float32Array(PARTICLE_COUNT);
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const ang = (i / PARTICLE_COUNT) * Math.PI * 2 + Math.random() * 0.4;
-      const yBias = Math.random() * 0.6 + 0.1;
-      dirs[i * 3 + 0] = Math.cos(ang);
-      dirs[i * 3 + 1] = yBias;
-      dirs[i * 3 + 2] = Math.sin(ang) * 0.3;
-      const len = Math.hypot(dirs[i * 3], dirs[i * 3 + 1], dirs[i * 3 + 2]);
-      dirs[i * 3] /= len;
-      dirs[i * 3 + 1] /= len;
-      dirs[i * 3 + 2] /= len;
+      // Leftward hemisphere — azim centered on -X (Math.PI), spread ±70°.
+      const azim = Math.PI + (Math.random() - 0.5) * (Math.PI * 70 / 180) * 2;
+      // Vertical spread: small upward bias (dust rises a bit but doesn't rocket).
+      const elev = (Math.random() - 0.3) * 0.6;  // mostly horizontal, slight up
+      const cx = Math.cos(elev) * Math.cos(azim);
+      const cy = Math.sin(elev);
+      const cz = Math.cos(elev) * Math.sin(azim) * 0.4;  // less depth scatter
+      const len = Math.hypot(cx, cy, cz);
+      dirs[i * 3 + 0] = cx / len;
+      dirs[i * 3 + 1] = cy / len;
+      dirs[i * 3 + 2] = cz / len;
       speeds[i] = (0.5 + Math.random() * 0.5) * PARTICLE_MAX_SPEED;
-      sizes[i] = 16 + Math.random() * 24;
+      sizes[i] = 10 + Math.random() * 14;    // smaller particles for refinement
     }
     const geom = new THREE.BufferGeometry();
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -287,7 +292,7 @@ export class FlythroughScene implements SceneModule {
       uniforms: {
         uTime: { value: 0.0 },
         uDuration: { value: PARTICLE_DURATION_S },
-        uColor: { value: new THREE.Color(0xff8a3a) },
+        uColor: { value: new THREE.Color(0xc9c1b5) },
       },
       vertexShader: /* glsl */ `
         attribute vec3 aDir;
@@ -299,7 +304,7 @@ export class FlythroughScene implements SceneModule {
         void main() {
           float t = clamp(uTime / uDuration, 0.0, 1.0);
           float d = aSpeed * (1.0 - exp(-3.5 * t));
-          vec3 offset = aDir * d + vec3(0.0, -0.9 * t * t, 0.0);
+          vec3 offset = aDir * d + vec3(0.0, -0.45 * t * t, 0.0);
           vec3 worldPos = position + offset;
           vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
           gl_Position = projectionMatrix * mv;
@@ -314,8 +319,11 @@ export class FlythroughScene implements SceneModule {
         void main() {
           vec2 c = gl_PointCoord - 0.5;
           float r = length(c);
-          float a = smoothstep(0.5, 0.0, r) * vLife;
-          vec3 col = mix(vec3(1.0, 0.85, 0.5), uColor, 1.0 - vLife);
+          float a = smoothstep(0.5, 0.0, r) * vLife * 0.75; // softer max alpha
+          // Dust: warm-gray-white core fading to cooler gray.
+          vec3 warm = vec3(0.95, 0.90, 0.82);
+          vec3 cool = vec3(0.55, 0.55, 0.58);
+          vec3 col = mix(cool, warm, vLife);
           gl_FragColor = vec4(col, a);
         }
       `,
@@ -338,9 +346,9 @@ export class FlythroughScene implements SceneModule {
     const sizes = new Float32Array(count);
     const seeds = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      // Mostly upward + outward. Random hemisphere bias.
-      const azim = Math.random() * Math.PI * 2;
-      const elev = Math.random() * 0.7 + 0.2; // skew upward
+      // Leftward-biased hemisphere — azim centered on -X (Math.PI), spread ±80°.
+      const azim = Math.PI + (Math.random() - 0.5) * (Math.PI * 80 / 180) * 2;
+      const elev = (Math.random() - 0.2) * 0.7;  // mostly horizontal, mild up
       const cx = Math.cos(elev) * Math.cos(azim);
       const cy = Math.sin(elev);
       const cz = Math.cos(elev) * Math.sin(azim);
@@ -378,7 +386,7 @@ export class FlythroughScene implements SceneModule {
           float t = clamp(uTime / uDuration, 0.0, 1.0);
           // Drag: pos += dir*speed*(1-exp(-2t)) + slow upward drift.
           float drag = 1.0 - exp(-2.0 * t);
-          vec3 offset = aDir * aSpeed * drag + vec3(0.0, 0.30 * t, 0.0);
+          vec3 offset = aDir * aSpeed * drag + vec3(-0.10 * t, 0.15 * t, 0.0);
           vec3 worldPos = position + offset;
           vec4 mv = modelViewMatrix * vec4(worldPos, 1.0);
           gl_Position = projectionMatrix * mv;
@@ -445,11 +453,10 @@ export class FlythroughScene implements SceneModule {
     const stagger = new Float32Array(N * VERTS_PER_SPOKE);
     const indices: number[] = [];
     for (let i = 0; i < N; i++) {
-      // Slight angular jitter so spokes don't all sit at uniform spacing —
-      // reads more like real chaotic energy than a math-perfect star pattern.
-      const ang = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.18;
-      // Bias rays mostly outward (into the screen plane); some upward burst.
-      const yBias = (Math.random() - 0.3) * 0.4;
+      // Leftward fan: spokes spread across ±55° around -X (Math.PI).
+      const ang = Math.PI + ((i / Math.max(1, N - 1)) - 0.5) * (Math.PI * 110 / 180);
+      // Slight vertical scatter so the fan isn't a perfectly flat horizontal band.
+      const yBias = (Math.random() - 0.5) * 0.25;
       const dx = Math.cos(ang);
       const dz = Math.sin(ang);
       const dy = yBias;
@@ -457,7 +464,7 @@ export class FlythroughScene implements SceneModule {
       const ndx = dx / len;
       const ndy = dy / len;
       const ndz = dz / len;
-      const ofs = i % 2 === 0 ? 0 : 0.05;
+      const ofs = i % 2 === 0 ? 0 : 0.04;
       // 4 verts per quad: (along=0, side=-1), (along=0, side=+1),
       //                   (along=1, side=-1), (along=1, side=+1)
       const baseV = i * VERTS_PER_SPOKE;
@@ -490,7 +497,7 @@ export class FlythroughScene implements SceneModule {
         uTime: { value: 0.0 },
         uDuration: { value: LIGHTRAY_DURATION_S },
         uMaxLen: { value: LIGHTRAY_MAX_LENGTH },
-        uHalfWidth: { value: 0.025 }, // world-units half-thickness of each spoke (thin beams)
+        uHalfWidth: { value: 0.015 }, // world-units half-thickness of each spoke (thin beams)
       },
       vertexShader: /* glsl */ `
         attribute vec3 aDir;
@@ -527,12 +534,10 @@ export class FlythroughScene implements SceneModule {
         varying float vLife;
         varying float vAlong;
         void main() {
-          // Bright orange-white core, fading to translucent at the tip.
-          // Tuned so that 16 rays' additive overlap at the impact origin
-          // reads as a hot center without saturating the bloom pass.
-          vec3 core = vec3(1.0, 0.85, 0.55);
-          vec3 edge = vec3(1.0, 0.45, 0.10);
-          float alpha = vLife * (1.0 - vAlong * 0.7) * 0.85;
+          // Warm-white core, slightly cooler at the tips — light, not fire.
+          vec3 core = vec3(1.0, 0.95, 0.85);
+          vec3 edge = vec3(0.85, 0.75, 0.55);
+          float alpha = vLife * (1.0 - vAlong * 0.7) * 0.6;  // dimmer overall
           vec3 col = mix(core, edge, vAlong);
           gl_FragColor = vec4(col, alpha);
         }
